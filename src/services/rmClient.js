@@ -5,7 +5,7 @@
 //   - Auth:       POST /Authentication/AuthorizeUser
 //                 body { Username, Password, LocationID }
 //   - The response is the token as a (JSON-quoted) string.
-//   - Every subsequent request carries header  X-RM12API: <token>
+//   - Every subsequent request carries header  X-RM12Api-ApiToken: <token>
 //   - On a 401 the client re-authenticates and retries the request once.
 //   - Tokens are cached in module scope and proactively refreshed after a TTL.
 //
@@ -122,7 +122,9 @@ export async function request(path, opts = {}) {
       ...opts,
       headers: {
         Accept: 'application/json',
-        'X-RM12API': token,
+        // Canonical WAPI12 token header. (The account rejects 'X-RM12API' with
+        // "Missing ApiToken"; this is the name the API actually expects.)
+        'X-RM12Api-ApiToken': token,
         ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
         ...(opts.headers || {}),
       },

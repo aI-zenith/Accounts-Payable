@@ -128,7 +128,7 @@ async function main() {
     '/Bills?pageSize=1&embeds=Attachments',
   ];
 
-  const headers = { 'X-RM12API': token, Accept: 'application/json' };
+  const headers = { 'X-RM12Api-ApiToken': token, Accept: 'application/json' };
   let headersDumped = false;
 
   for (const ep of endpoints) {

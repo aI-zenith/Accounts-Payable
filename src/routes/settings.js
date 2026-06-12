@@ -144,13 +144,10 @@ router.get(
   wrap(async (req, res) => {
     const endpoints = [
       '/Bills?pageSize=2',
-      '/Bills?pageSize=1&embeds=GLAccount,Property,Vendor,Attachments',
+      '/Bills?pageSize=1&embeds=GLAccount,Property,Vendor',
       '/Vendors?pageSize=2',
       '/GLAccounts?pageSize=5',
       '/Properties?pageSize=2',
-      '/Accounts?pageSize=2',
-      '/Attachments?pageSize=2',
-      '/Documents?pageSize=2',
     ];
 
     const result = {};
