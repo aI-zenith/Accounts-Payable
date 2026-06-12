@@ -1,52 +1,61 @@
-// Rent Manager WAPI12 client.
+// Rent Manager API client.
 //
-// !!! ENDPOINTS UNCONFIRMED — PENDING API DISCOVERY !!!
-// Authentication is implemented and exercised by the Settings "Test connection"
-// flow. The write operations (createProject / attachDocument) are deliberately
-// left as STUBS: the exact resource paths and payload shapes must be confirmed
-// by running API discovery against the live account before they are wired.
+// AUTH IS WIRED for this account (company code `bluegm`):
+//   - Base URL:   https://bluegm.api.rentmanager.com  (RENTMANAGER_BASE_URL)
+//   - Auth:       POST /authentication/AuthenticateUser
+//                 body { Username, Password, LocationID }
+//   - The response is the token as a (JSON-quoted) string.
+//   - Every subsequent request carries header  X-RM12API: <token>
+//   - On a 401 the client re-authenticates and retries the request once.
+//   - Tokens are cached in module scope and proactively refreshed after a TTL.
 //
-// See discover.js at the repo root for the discovery script.
+// The WRITE operations (createProject / attachDocument) remain STUBS: their
+// exact resource paths/payloads are still pending API discovery. They are
+// backed by the working request() helper, so wiring them later is a one-liner.
 
 import { readFile } from 'node:fs/promises';
 import { getCredentials } from './credentials.js';
 
-// Module-scoped token cache. getToken() re-auths on demand (and request()
-// re-auths once on a 401).
-let cachedToken = null;
-let cachedSubdomain = null;
+// Proactively re-auth tokens older than this (ms). 401-retry covers the rest.
+const TOKEN_TTL_MS = 55 * 60 * 1000;
 
-function baseUrlFor(subdomain) {
-  if (!subdomain) {
-    throw new Error('Rent Manager subdomain is not configured.');
-  }
-  return `https://${subdomain}.api.rentmanager.com`;
+let cachedToken = null;
+let cachedAt = 0;
+let cachedBaseUrl = null;
+
+function trimSlash(url) {
+  return url ? url.replace(/\/+$/, '') : url;
 }
 
 /**
- * Authenticate against /Authentication/AuthorizeUser.
- * The token is returned as a raw, JSON-quoted string (e.g. "abc123") — parse it.
+ * Authenticate against /authentication/AuthenticateUser.
+ * The token is returned as a JSON-quoted string (e.g. "abc123") — parse it.
  * @returns {Promise<string>} the API token
  */
 export async function authenticate() {
   const { rm } = await getCredentials();
+  if (!rm.baseUrl) throw new Error('Rent Manager base URL is not configured.');
   if (!rm.username || !rm.password) {
     throw new Error('Rent Manager username/password are not configured.');
   }
-  const base = baseUrlFor(rm.subdomain);
+  const base = trimSlash(rm.baseUrl);
 
-  const res = await fetch(`${base}/Authentication/AuthorizeUser`, {
+  const res = await fetch(`${base}/authentication/AuthenticateUser`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ Username: rm.username, Password: rm.password }),
+    body: JSON.stringify({
+      Username: rm.username,
+      Password: rm.password,
+      LocationID: rm.locationId ?? 1,
+    }),
   });
 
   const text = await res.text();
   if (!res.ok) {
+    // Never include the password; the body here is the API's own message.
     throw new Error(`Rent Manager auth failed: HTTP ${res.status} ${text.slice(0, 200)}`);
   }
 
-  // Body is the token as a JSON-quoted string. Parse defensively.
   let token;
   try {
     const parsed = JSON.parse(text);
@@ -54,47 +63,66 @@ export async function authenticate() {
   } catch {
     token = text.trim().replace(/^"|"$/g, '');
   }
-  if (!token) {
-    throw new Error('Rent Manager auth succeeded but no token was returned.');
-  }
+  if (!token) throw new Error('Rent Manager auth succeeded but no token was returned.');
 
   cachedToken = token;
-  cachedSubdomain = rm.subdomain;
+  cachedAt = Date.now();
+  cachedBaseUrl = base;
   return token;
 }
 
 /**
- * Return a valid token, authenticating if none is cached or the subdomain changed.
+ * Return a valid token, (re-)authenticating if none is cached, the cached
+ * token has aged past the TTL, or the configured base URL changed.
  */
 export async function getToken() {
   const { rm } = await getCredentials();
-  if (cachedToken && cachedSubdomain === rm.subdomain) {
-    return cachedToken;
+  const base = trimSlash(rm.baseUrl);
+  const fresh = cachedToken && cachedBaseUrl === base && Date.now() - cachedAt < TOKEN_TTL_MS;
+  return fresh ? cachedToken : authenticate();
+}
+
+/**
+ * Best-effort token warm-up, called once at server startup. Non-fatal: if the
+ * credentials aren't configured yet, we just log and carry on.
+ */
+export async function warmToken() {
+  try {
+    await authenticate();
+    console.log('[rmClient] authenticated with Rent Manager on startup.');
+  } catch (err) {
+    console.warn('[rmClient] startup auth skipped:', err.message);
   }
-  return authenticate();
 }
 
 /**
  * Low-level request helper.
- * - injects X-RM12Api-ApiToken
+ * - resolves the full URL against the configured base
+ * - injects the X-RM12API token header
  * - retries ONCE on 401 by re-authenticating
- * - returns BOTH the parsed body and the response headers (callers need the
- *   Location header to read the id of a newly-created record).
- * - surfaces rate-limit headers in logs.
+ * - returns BOTH the parsed body and the response headers (write ops need the
+ *   Location header to read a newly-created record id)
+ * - surfaces rate-limit headers in logs
  *
+ * @param {string} path e.g. '/tenants', '/properties', or an absolute URL
  * @returns {Promise<{ status:number, body:any, headers:Headers, location:string|null }>}
  */
 export async function request(path, opts = {}) {
   const { rm } = await getCredentials();
-  const base = baseUrlFor(rm.subdomain);
-  const url = path.startsWith('http') ? path : `${base}${path}`;
+  const base = trimSlash(rm.baseUrl);
+  if (!base && !path.startsWith('http')) {
+    throw new Error('Rent Manager base URL is not configured.');
+  }
+  const url = path.startsWith('http')
+    ? path
+    : `${base}/${String(path).replace(/^\/+/, '')}`;
 
-  const doFetch = async (token) =>
+  const doFetch = (token) =>
     fetch(url, {
       ...opts,
       headers: {
         Accept: 'application/json',
-        'X-RM12Api-ApiToken': token,
+        'X-RM12API': token,
         ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
         ...(opts.headers || {}),
       },
@@ -103,15 +131,14 @@ export async function request(path, opts = {}) {
   let token = await getToken();
   let res = await doFetch(token);
 
-  // Re-auth once on 401.
+  // Token expired/invalid -> re-auth once and retry.
   if (res.status === 401) {
     token = await authenticate();
     res = await doFetch(token);
   }
 
-  // Log rate-limit headers (names per WAPI12 conventions; harmless if absent).
-  const limit = res.headers.get('X-RateLimit');
-  const remaining = res.headers.get('X-RateRemaining');
+  const limit = res.headers.get('X-RateLimit') || res.headers.get('X-RateLimit-Limit');
+  const remaining = res.headers.get('X-RateRemaining') || res.headers.get('X-RateLimit-Remaining');
   if (limit || remaining) {
     console.log(`[rmClient] rate limit: ${remaining ?? '?'} / ${limit ?? '?'} remaining`);
   }
@@ -133,28 +160,22 @@ export async function request(path, opts = {}) {
     throw err;
   }
 
-  return {
-    status: res.status,
-    body,
-    headers: res.headers,
-    location: res.headers.get('Location'),
-  };
+  return { status: res.status, body, headers: res.headers, location: res.headers.get('Location') };
 }
 
 // ---------------------------------------------------------------------------
-// WRITE OPERATIONS — STUBS. Wire after API discovery.
+// WRITE OPERATIONS — STUBS. Wire after confirming the resource paths.
 // ---------------------------------------------------------------------------
 
 /**
  * Create the Rent Manager record for a confirmed invoice.
- * STUB: the target endpoint/payload is unconfirmed pending API discovery.
- * Intended to return the new record id (read from the Location header).
+ * STUB: target endpoint/payload pending API discovery. Intended to return the
+ * new record id (from the Location header or the response body).
  */
 export async function createProject(data) {
-  // TODO(discovery): replace with the confirmed endpoint, e.g.
-  //   const { location, body } = await request('/Projects', {
-  //     method: 'POST',
-  //     body: JSON.stringify(mapInvoiceToProject(data)),
+  // TODO(discovery): e.g.
+  //   const { location, body } = await request('/projects', {
+  //     method: 'POST', body: JSON.stringify(mapInvoiceToProject(data)),
   //   });
   //   return idFromLocation(location) ?? body?.ProjectID;
   throw new Error('TODO: wire endpoint after discovery');
@@ -162,13 +183,11 @@ export async function createProject(data) {
 
 /**
  * Attach the original invoice PDF to a Rent Manager record.
- * STUB: the target endpoint/upload shape is unconfirmed pending API discovery.
+ * STUB: target endpoint/upload shape pending API discovery.
  */
 export async function attachDocument(parentId, filePath) {
-  // TODO(discovery): replace with the confirmed attachment endpoint. The file
-  // is read here so the eventual wiring only needs the request shape:
-  //   const bytes = await readFile(filePath);
-  void readFile; // referenced to keep the intended dependency visible
+  // TODO(discovery): read the file and POST to the confirmed attachment endpoint.
+  void readFile; // keep the intended dependency visible
   throw new Error('TODO: wire endpoint after discovery');
 }
 
@@ -178,8 +197,9 @@ export async function testAuthentication() {
   return Boolean(token);
 }
 
-// Allow tests/teardown to clear the cached token.
+// Allow tests/teardown/settings-change to clear the cached token.
 export function _resetTokenCache() {
   cachedToken = null;
-  cachedSubdomain = null;
+  cachedAt = 0;
+  cachedBaseUrl = null;
 }

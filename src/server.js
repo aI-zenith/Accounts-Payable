@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import invoiceRoutes from './routes/invoices.js';
 import settingsRoutes from './routes/settings.js';
+import { warmToken } from './services/rmClient.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -62,6 +63,8 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Invoice Bridge listening on http://localhost:${PORT}`);
+  // Pre-authenticate with Rent Manager on startup (non-fatal if unconfigured).
+  warmToken();
 });
 
 export default app;

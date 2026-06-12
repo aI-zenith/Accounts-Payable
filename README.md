@@ -19,20 +19,32 @@ invoice (PDF), let Claude vision extract the data, review and correct it, then
 4. **Push** — **Push to Rent Manager** will create the record and attach the
    PDF. This is **stubbed** today — see below.
 
-## Rent Manager push is stubbed (pending API discovery)
+## Rent Manager integration
 
-`src/services/rmClient.js` implements authentication and a generic
-`request()` helper, but `createProject()` and `attachDocument()` are
-deliberately left as clearly-marked **stubs** that throw
-`TODO: wire endpoint after discovery`. The exact WAPI12 resource paths and
-payload shapes need to be confirmed against a live account first.
+`src/services/rmClient.js` implements the live API integration for the `bluegm`
+account:
 
-Use the one-off `discover.js` at the repo root to probe your account's
-endpoints (authenticates, then prints the JSON shape + first record for the
-candidate endpoints, plus the rate-limit headers). Once you know the real
-endpoints, wire them into the two stub functions. The push button already
-catches the stub error and shows a friendly "not wired yet" message, so the
-rest of the flow is usable today.
+- **Base URL** `RENTMANAGER_BASE_URL` (e.g. `https://bluegm.api.rentmanager.com`).
+- **Auth** `POST /authentication/AuthenticateUser` with
+  `{ Username, Password, LocationID }`. The token (a JSON-quoted string) is
+  cached in module scope, warmed once on server startup, and proactively
+  refreshed after a TTL.
+- **Every request** carries the `X-RM12API: <token>` header via the generic
+  `request()` helper, which also returns the response headers (for the
+  `Location` of created records) and logs rate-limit headers.
+- **401 handling** — a `401` triggers a single re-authenticate-and-retry.
+
+Credentials come from `RENTMANAGER_USERNAME` / `RENTMANAGER_PASSWORD` (and
+`RENTMANAGER_LOCATION_ID`, default `1`), or from the encrypted values in
+**Settings**.
+
+The two **write** operations — `createProject()` and `attachDocument()` — remain
+clearly-marked **stubs** that throw `TODO: wire endpoint after discovery`, since
+the exact resource paths/payloads still need confirming. They are backed by the
+working `request()` helper, so wiring them is a one-liner once known. The push
+button catches the stub error and shows a friendly "not wired yet" message, so
+the rest of the flow is usable today. `discover.js` at the repo root can probe
+your account's endpoints to find them.
 
 ## Local setup
 
@@ -81,7 +93,10 @@ red = failed.
 | `DATABASE_URL` | Postgres connection string (include `sslmode=require`) |
 | `APP_ENCRYPTION_KEY` | base64 of 32 random bytes; encrypts stored secrets |
 | `ANTHROPIC_API_KEY` | fallback Claude key if not set in Settings |
-| `RM_SUBDOMAIN` / `RM_USERNAME` / `RM_PASSWORD` | fallback Rent Manager creds |
+| `RENTMANAGER_BASE_URL` | Rent Manager API base, e.g. `https://bluegm.api.rentmanager.com` |
+| `RENTMANAGER_USERNAME` / `RENTMANAGER_PASSWORD` | Rent Manager credentials |
+| `RENTMANAGER_LOCATION_ID` | location id for auth (default `1`) |
+| `RM_SUBDOMAIN` / `RM_USERNAME` / `RM_PASSWORD` | legacy fallbacks |
 | `PORT` | default `3000` |
 | `NODE_ENV` | `development` / `production` |
 | `UPLOAD_DIR` | where PDFs are stored (default `./uploads`) |

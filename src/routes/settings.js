@@ -96,8 +96,11 @@ router.post(
   wrap(async (req, res) => {
     try {
       const { rm } = await getCredentials();
-      if (!rm.subdomain || !rm.username || !rm.password) {
-        return res.json({ ok: false, message: 'Subdomain, username and password are all required.' });
+      if (!rm.baseUrl || !rm.username || !rm.password) {
+        return res.json({
+          ok: false,
+          message: 'A subdomain (or RENTMANAGER_BASE_URL), username and password are all required.',
+        });
       }
       _resetTokenCache();
       await authenticate();

@@ -29,9 +29,11 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: RM_SUBDOMAIN
+      - key: RENTMANAGER_BASE_URL
         sync: false
-      - key: RM_USERNAME
+      - key: RENTMANAGER_USERNAME
         sync: false
-      - key: RM_PASSWORD
+      - key: RENTMANAGER_PASSWORD
         sync: false
+      - key: RENTMANAGER_LOCATION_ID
+        value: "1"

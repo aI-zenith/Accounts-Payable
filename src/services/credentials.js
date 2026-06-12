@@ -36,12 +36,23 @@ export async function getCredentials() {
     console.error('[credentials] could not read settings row:', err.message);
   }
 
+  // Resolve the API base URL. A subdomain saved in Settings derives the URL;
+  // otherwise fall back to the full RENTMANAGER_BASE_URL, then a RM_SUBDOMAIN.
+  const subdomain = row.rm_subdomain || process.env.RM_SUBDOMAIN || null;
+  const baseUrl =
+    (subdomain && `https://${subdomain}.api.rentmanager.com`) ||
+    process.env.RENTMANAGER_BASE_URL ||
+    null;
+
   return {
     rm: {
-      // subdomain is not a secret, stored in plaintext.
-      subdomain: row.rm_subdomain || process.env.RM_SUBDOMAIN || null,
-      username: pick(row.rm_username, process.env.RM_USERNAME),
-      password: pick(row.rm_password, process.env.RM_PASSWORD),
+      // subdomain is not a secret, stored in plaintext (may be null when a full
+      // RENTMANAGER_BASE_URL is used instead).
+      subdomain,
+      baseUrl,
+      locationId: Number(process.env.RENTMANAGER_LOCATION_ID || 1),
+      username: pick(row.rm_username, process.env.RENTMANAGER_USERNAME || process.env.RM_USERNAME),
+      password: pick(row.rm_password, process.env.RENTMANAGER_PASSWORD || process.env.RM_PASSWORD),
     },
     anthropic: {
       apiKey: pick(row.anthropic_api_key, process.env.ANTHROPIC_API_KEY),
