@@ -69,6 +69,9 @@
           <tr>
             <td data-label="Vendor">
               <span class="cell-primary"><%= inv.vendor_name || inv.original_name %></span>
+              <% if (inv.source === 'email') { %>
+                <span class="tag tag--email" title="<%= inv.email_from || 'Received by email' %>">email</span>
+              <% } %>
             </td>
             <td data-label="Invoice #"><%= inv.invoice_number || '—' %></td>
             <td data-label="Date"><%= fmtDate(inv.invoice_date) %></td>

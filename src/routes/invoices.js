@@ -3,14 +3,8 @@ import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
 import { query } from '../db/pool.js';
-import { extractInvoice } from '../services/extract.js';
-import {
-  findCreditCardByName,
-  findVendorByName,
-  createVendor,
-  findPropertyByName,
-  createCreditCardTransaction,
-} from '../services/rmClient.js';
+import { extractAndStore } from '../services/ingest.js';
+import { pushInvoiceToRentManager } from '../services/pushInvoice.js';
 
 const router = Router();
 
@@ -32,7 +26,8 @@ const STATUSES = ['pending', 'extracting', 'extracted', 'confirmed', 'needs_revi
 // `file_data` bytea so it is only ever loaded when streaming the PDF.
 const INVOICE_COLS =
   'id, original_name, stored_path, status, extracted, vendor_name, invoice_number, ' +
-  'invoice_date, total, rm_project_id, rm_attachment_id, error_msg, created_at, updated_at';
+  'invoice_date, total, rm_project_id, rm_attachment_id, error_msg, source, email_from, ' +
+  'created_at, updated_at';
 
 // Small async wrapper so thrown errors reach the error middleware.
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -54,43 +49,6 @@ const loadInvoice = wrap(async (req, res, next) => {
   req.invoice = rows[0];
   next();
 });
-
-// --- background extraction -------------------------------------------------
-// Fired without awaiting from the upload handler. Updates status as it goes.
-async function processInvoice(id, pdfBuffer) {
-  try {
-    await query("UPDATE invoices SET status = 'extracting', updated_at = now() WHERE id = $1", [id]);
-    const data = await extractInvoice(pdfBuffer);
-
-    await query(
-      `UPDATE invoices
-         SET status = 'extracted',
-             extracted = $2,
-             vendor_name = $3,
-             invoice_number = $4,
-             invoice_date = $5,
-             total = $6,
-             error_msg = NULL,
-             updated_at = now()
-       WHERE id = $1`,
-      [
-        id,
-        data,
-        data.vendor_name ?? null,
-        data.invoice_number ?? null,
-        normalizeDate(data.invoice_date),
-        normalizeNumber(data.total),
-      ]
-    );
-  } catch (err) {
-    const detail = err.raw || err.message || String(err);
-    console.error(`[invoices] extraction failed for #${id}:`, err.message);
-    await query(
-      "UPDATE invoices SET status = 'error', error_msg = $2, updated_at = now() WHERE id = $1",
-      [id, detail]
-    ).catch((e) => console.error('[invoices] could not record error state:', e.message));
-  }
-}
 
 function normalizeDate(v) {
   if (!v) return null;
@@ -145,7 +103,9 @@ router.post(
     const id = rows[0].id;
 
     // Kick off extraction without blocking the response.
-    processInvoice(id, req.file.buffer);
+    extractAndStore(id, req.file.buffer).catch((err) =>
+      console.error(`[invoices] extraction failed for #${id}:`, err.message)
+    );
 
     res.redirect('/?notice=' + encodeURIComponent(`Uploaded "${req.file.originalname}" — extracting…`));
   })
@@ -272,88 +232,18 @@ router.post(
   })
 );
 
-// Build a short memo from the line items (or invoice number).
-function memoFrom(d) {
-  const items = Array.isArray(d.line_items) ? d.line_items : [];
-  const desc = items.map((li) => li.description).filter(Boolean).slice(0, 5).join('; ');
-  if (desc) return desc.slice(0, 250);
-  return d.invoice_number ? `Invoice ${d.invoice_number}` : '';
-}
-
-// Map the extracted invoice + resolved RM records into the POST body.
-// Field names are CONFIRMED from the live CreditCardTransactions schema:
-//   vendor -> AccountID + AccountType:"Vendor"; date -> TransactionDate;
-//   memo -> Comment. The property/GL allocation is a child structure (not on the
-//   header) and is added once its shape is confirmed via discovery.
-function buildCreditCardTransaction({ card, vendor, property, d }) {
-  return {
-    CreditCardID: card.CreditCardID ?? card.ID,
-    AccountID: vendor.VendorID ?? vendor.ID,
-    AccountType: 'Vendor',
-    TransactionDate: normalizeDate(d.invoice_date) || new Date().toISOString().slice(0, 10),
-    Reference: d.invoice_number || '',
-    Comment: memoFrom(d),
-    Amount: normalizeNumber(d.total) ?? 0,
-    // "Charge" is the transaction direction; RM records TransactionType "CreditCard".
-    Type: 'Charge',
-    // TODO(property): attach `property` (PropertyID ${'${property?.PropertyID}'}) via the
-    // confirmed child allocation structure once discovery returns it.
-  };
-}
-
 // --- POST /invoice/:id/push -----------------------------------------------
-// Pushes the invoice to Rent Manager as a Credit Card Transaction.
+// Pushes the invoice to Rent Manager as a Credit Card Transaction. The matching
+// + create + status transition all live in pushInvoiceToRentManager so the
+// manual button and the email auto-push behave identically.
 router.post(
   '/invoice/:id/push',
   loadInvoice,
   wrap(async (req, res) => {
-    const inv = req.invoice;
-    const d = inv.extracted || {};
-
-    // Flag for manual review (no silent failures): keep the row, record why.
-    const flag = async (msg) => {
-      await query(
-        "UPDATE invoices SET status = 'needs_review', error_msg = $2, updated_at = now() WHERE id = $1",
-        [inv.id, msg]
-      );
-      return res.redirect(`/invoice/${inv.id}?notice=` + encodeURIComponent(msg));
-    };
-
-    try {
-      // 1) Credit card — required; a missing/unmatched card is a hard stop.
-      if (!d.credit_card) return flag('Needs review: no credit card found on the invoice.');
-      const card = await findCreditCardByName(d.credit_card);
-      if (!card) return flag(`Credit card not found: ${d.credit_card}`);
-
-      // 2) Vendor — match by merchant name, create if it doesn't exist.
-      let vendor = d.vendor_name ? await findVendorByName(d.vendor_name) : null;
-      if (!vendor && d.vendor_name) {
-        vendor = await createVendor(d.vendor_name);
-      }
-      if (!vendor) return flag('Needs review: no vendor/merchant on the invoice.');
-
-      // 3) Property/job — flag for manual review if unmatched.
-      const property = d.property_reference ? await findPropertyByName(d.property_reference) : null;
-      if (!property) {
-        return flag(`Needs review: property/job not matched ("${d.property_reference || ''}").`);
-      }
-
-      // 4) Create the transaction.
-      const payload = buildCreditCardTransaction({ card, vendor, property, d });
-      const txnId = await createCreditCardTransaction(payload);
-
-      await query(
-        "UPDATE invoices SET status = 'pushed', rm_project_id = $2, updated_at = now() WHERE id = $1",
-        [inv.id, txnId != null ? String(txnId) : null]
-      );
-      return res.redirect(
-        `/invoice/${inv.id}?notice=` +
-          encodeURIComponent(`Pushed to Rent Manager — credit card transaction ${txnId ?? 'created'}.`)
-      );
-    } catch (err) {
-      console.error(`[invoices] push failed for #${inv.id}:`, err.message);
-      return flag(`Push failed: ${err.message}`);
-    }
+    const result = await pushInvoiceToRentManager(req.invoice);
+    return res.redirect(
+      `/invoice/${req.invoice.id}?notice=` + encodeURIComponent(result.message)
+    );
   })
 );
 

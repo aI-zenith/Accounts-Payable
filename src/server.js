@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import invoiceRoutes from './routes/invoices.js';
 import settingsRoutes from './routes/settings.js';
 import { warmToken } from './services/rmClient.js';
+import { startEmailPoller } from './services/emailPoller.js';
 import { runMigrations } from './db/migrate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -77,6 +78,8 @@ app.listen(PORT, () => {
   console.log(`Invoice Bridge listening on http://localhost:${PORT}`);
   // Pre-authenticate with Rent Manager on startup (non-fatal if unconfigured).
   warmToken();
+  // Start polling the configured inbox for emailed bills (no-op until configured).
+  startEmailPoller();
 });
 
 export default app;

@@ -79,7 +79,8 @@
       const card = btn.closest('[data-integration]');
       const dot = card.querySelector('[data-dot]');
       const status = card.querySelector('[data-status]');
-      const url = '/settings/test/' + (which === 'claude' ? 'claude' : 'rentmanager');
+      // data-test is the endpoint name: 'rentmanager' | 'claude' | 'email'.
+      const url = '/settings/test/' + which;
 
       dot.className = 'dot is-testing';
       status.hidden = true;

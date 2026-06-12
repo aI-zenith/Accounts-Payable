@@ -1,23 +1,46 @@
 # Invoice Bridge
 
-A small, production-ready web app for accounts-payable staff. Upload a vendor
-invoice (PDF), let Claude vision extract the data, review and correct it, then
-(later) push the record to Rent Manager and attach the original PDF.
+A small, production-ready web app for accounts-payable staff. Bills arrive two
+ways — **emailed to a dedicated inbox** or **uploaded by hand** — and each one is
+read by Claude, mapped to the right records, and posted to Rent Manager as a
+**credit card transaction**.
 
 - **Stack:** Node 20+ / Express, EJS server-rendered views, PostgreSQL (Neon),
-  the Claude API for extraction. ES modules throughout. Deployable on Render.
+  the Claude API for extraction, IMAP for email intake. ES modules throughout.
+  Deployable on Render.
 
 ## How it works
 
-1. **Upload** — drop a PDF on the dashboard. A row is created (`pending`) and
-   extraction is kicked off in the background (`extracting`).
+There are two entry points that converge on the same extract → match → push
+pipeline:
+
+- **Email (hands-off)** — the app polls a dedicated IMAP mailbox. Every new
+  message with a PDF attachment becomes an invoice row (`source = email`), is
+  extracted, and — when **Auto-push** is on — is posted to Rent Manager
+  automatically. Anything that can't be matched confidently is flagged
+  `needs_review` instead of guessed. Configure the mailbox in **Settings → Email
+  inbox**.
+- **Upload (manual)** — drop a PDF on the dashboard for the same flow with a
+  review step.
+
+1. **Ingest** — a row is created (`pending`) and extraction kicks off
+   (`extracting`).
 2. **Extract** — `claude-opus-4-8` reads the PDF and returns strict JSON
-   (vendor, invoice #, dates, line items, totals, etc.). Stored on the row and
-   copied into flat columns (`extracted`).
-3. **Review** — a two-column screen: the PDF on the left, an editable form on
-   the right. Correct anything and **Save changes** (`confirmed`).
-4. **Push** — **Push to Rent Manager** will create the record and attach the
-   PDF. This is **stubbed** today — see below.
+   (vendor, invoice #, dates, line items, totals, **credit card**, property/job
+   reference, etc.). Stored on the row (`extracted`).
+3. **Match & push** — resolve the credit card, vendor (auto-created if new), and
+   property, then create the credit card transaction (`pushed`). Emailed bills do
+   this automatically; uploaded bills do it on **Push to Rent Manager** after an
+   optional **Review** step.
+
+### How a bill is assigned to a property
+
+The property is **identified by the credit card** used on the bill — each card in
+Rent Manager belongs to a property, and that's the source of truth. The invoice's
+job/property reference is then used as a **second-step verification**: it must
+match that property (by name) or one of its **units**. If the card isn't linked
+to a property, or the job name doesn't match the card's property or a unit, the
+bill is flagged `needs_review` rather than posted to the wrong place.
 
 ## Rent Manager integration
 
@@ -38,13 +61,22 @@ Credentials come from `RENTMANAGER_USERNAME` / `RENTMANAGER_PASSWORD` (and
 `RENTMANAGER_LOCATION_ID`, default `1`), or from the encrypted values in
 **Settings**.
 
-The two **write** operations — `createProject()` and `attachDocument()` — remain
-clearly-marked **stubs** that throw `TODO: wire endpoint after discovery`, since
-the exact resource paths/payloads still need confirming. They are backed by the
-working `request()` helper, so wiring them is a one-liner once known. The push
-button catches the stub error and shows a friendly "not wired yet" message, so
-the rest of the flow is usable today. `discover.js` at the repo root can probe
-your account's endpoints to find them.
+The **push** is wired: `pushInvoiceToRentManager()` (`src/services/pushInvoice.js`)
+resolves the credit card, vendor, and property, then `POST`s a
+`CreditCardTransaction`. Record resolution lives in `rmClient.js`:
+
+- `findCreditCardByName` / `findVendorByName` (+ `createVendor`) — fuzzy name match.
+- `findPropertyForCreditCard` — the card → property link (tries `PropertyID` on
+  the card, an embedded `Property`, a `?embeds=Property` re-fetch, then a name
+  fallback). The exact field your account uses may differ — `discover.js` and the
+  temporary `/settings/rm-discovery` route can confirm it.
+- `jobMatchesPropertyOrUnit` — the second-step check against the property's
+  units (`/Units?filter=PropertyID,eq,…`, falling back to `?embeds=Units`).
+
+The property/GL **allocation** child structure on the transaction is the one
+remaining discovery item (marked `TODO(property)` in `buildCreditCardTransaction`);
+the verified property is already resolved and ready to attach once its shape is
+confirmed.
 
 ## Local setup
 
@@ -97,8 +129,18 @@ red = failed.
 | `RENTMANAGER_USERNAME` / `RENTMANAGER_PASSWORD` | Rent Manager credentials |
 | `RENTMANAGER_LOCATION_ID` | location id for auth (default `1`) |
 | `RM_SUBDOMAIN` / `RM_USERNAME` / `RM_PASSWORD` | legacy fallbacks |
+| `IMAP_HOST` / `IMAP_PORT` | inbox to poll for emailed bills (e.g. `imap.gmail.com` / `993`) |
+| `IMAP_USER` / `IMAP_PASSWORD` | mailbox login (use an **app password**) |
+| `IMAP_MAILBOX` | folder to watch (default `INBOX`) |
+| `IMAP_ALLOWED_SENDERS` | optional comma-separated sender allow-list |
+| `EMAIL_AUTO_PUSH` | `true` (auto-post) / `false` (hold for review). Default `true` |
+| `EMAIL_POLL_INTERVAL_MS` | poll cadence (default `60000`) |
 | `PORT` | default `3000` |
 | `NODE_ENV` | `development` / `production` |
+
+All `IMAP_*` / `EMAIL_*` values can also be set in **Settings → Email inbox**
+(the password is encrypted at rest there), and resolve DB-first like the other
+secrets. Leave the inbox unconfigured to disable email intake entirely.
 
 Uploaded PDFs are stored in Postgres (the `invoices.file_data` column), so they
 survive deploys and restarts — no persistent disk or `UPLOAD_DIR` is required.
@@ -132,11 +174,14 @@ src/
   db/pool.js             pg Pool (DATABASE_URL, ssl)
   db/migrate.js          create tables if not exists
   services/crypto.js     AES-256-GCM encrypt/decrypt + mask
-  services/credentials.js getCredentials() resolver (DB -> .env)
+  services/credentials.js getCredentials() resolver (DB -> .env), incl. inbox
   services/extract.js    Claude API: PDF -> structured JSON
-  services/rmClient.js   Rent Manager client: auth + STUBS
+  services/ingest.js     shared extract-and-store (upload + email)
+  services/pushInvoice.js card/vendor/property matching + create transaction
+  services/emailPoller.js IMAP poll -> ingest -> auto-push
+  services/rmClient.js   Rent Manager client: auth + lookups + create
   routes/invoices.js     dashboard, upload, review, confirm, push, file, delete
-  routes/settings.js     settings + connection tests
+  routes/settings.js     settings + connection tests (RM / Claude / email)
 views/                   EJS: layout, dashboard, review, settings, error
 public/css/styles.css    the design
 public/js/app.js         drag-drop upload, line-item editing, connection tests
