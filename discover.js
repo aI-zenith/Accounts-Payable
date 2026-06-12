@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-'use strict';
 
 /*
  * discover.js — one-off Rent Manager API explorer for wiring the AP-bill push.
@@ -19,8 +18,11 @@
  * Usage: node discover.js
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // --- tiny .env parser (no dependencies) -----------------------------------
 function loadEnv(file) {
