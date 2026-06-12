@@ -2,21 +2,19 @@
 'use strict';
 
 /*
- * discover.js — one-off Rent Manager WAPI12 endpoint explorer.
+ * discover.js — one-off Rent Manager API explorer for wiring the AP-bill push.
  *
- * Authenticates against /Authentication/AuthorizeUser, then GETs a set of
- * endpoints using the X-RM12Api-ApiToken header and prints, for each one:
- *   - the JSON "shape" (array vs object, length, top-level keys)
- *   - the first record (pretty-printed)
- * 404s (and other per-endpoint failures) are caught so the run continues.
+ * Authenticates (POST /Authentication/AuthorizeUser with {Username, Password,
+ * LocationID}), then for each endpoint prints the JSON shape + first record so
+ * we can see the exact fields needed to create an Accounts Payable bill and
+ * attach the original PDF. Also dumps the response headers for one call so the
+ * rate-limit headers are visible. 404s are caught so the run continues.
  *
- * Response headers for one call are dumped so you can inspect the
- * rate-limit headers (X-RateLimit-*, Retry-After, etc.).
- *
- * Config is read from a .env file (see .env.example):
- *   RM_SUBDOMAIN=mycompany      # the "MYCOMPANY" in MYCOMPANY.api.rentmanager.com
- *   RM_USERNAME=...
- *   RM_PASSWORD=...
+ * Config comes from a .env file (or the environment):
+ *   RENTMANAGER_BASE_URL=https://bluegm.api.rentmanager.com
+ *   RENTMANAGER_USERNAME=...
+ *   RENTMANAGER_PASSWORD=...
+ *   RENTMANAGER_LOCATION_ID=1
  *
  * Usage: node discover.js
  */
@@ -41,7 +39,6 @@ function loadEnv(file) {
     if (eq === -1) continue;
     const key = line.slice(0, eq).trim();
     let val = line.slice(eq + 1).trim();
-    // strip optional surrounding quotes
     if (
       (val.startsWith('"') && val.endsWith('"')) ||
       (val.startsWith("'") && val.endsWith("'"))
@@ -53,7 +50,6 @@ function loadEnv(file) {
   return out;
 }
 
-// --- helpers ----------------------------------------------------------------
 function shapeOf(data) {
   if (Array.isArray(data)) {
     const first = data[0];
@@ -64,9 +60,7 @@ function shapeOf(data) {
         first && typeof first === 'object' ? Object.keys(first) : null,
     };
   }
-  if (data && typeof data === 'object') {
-    return { type: 'object', keys: Object.keys(data) };
-  }
+  if (data && typeof data === 'object') return { type: 'object', keys: Object.keys(data) };
   return { type: typeof data, value: data };
 }
 
@@ -76,138 +70,83 @@ function firstRecord(data) {
 }
 
 function truncate(str, max = 4000) {
-  if (str.length <= max) return str;
-  return str.slice(0, max) + `\n... [truncated ${str.length - max} chars]`;
+  return str.length <= max ? str : str.slice(0, max) + `\n... [truncated ${str.length - max} chars]`;
 }
 
-// --- main -------------------------------------------------------------------
 async function main() {
   const env = { ...loadEnv(path.join(__dirname, '.env')), ...process.env };
 
-  const subdomain = env.RM_SUBDOMAIN;
-  const username = env.RM_USERNAME;
-  const password = env.RM_PASSWORD;
+  const base = (env.RENTMANAGER_BASE_URL || env.RM_BASE_URL || '').replace(/\/+$/, '');
+  const username = env.RENTMANAGER_USERNAME || env.RM_USERNAME;
+  const password = env.RENTMANAGER_PASSWORD || env.RM_PASSWORD;
+  const locationId = Number(env.RENTMANAGER_LOCATION_ID || 1);
 
   const missing = [];
-  if (!subdomain) missing.push('RM_SUBDOMAIN');
-  if (!username) missing.push('RM_USERNAME');
-  if (!password) missing.push('RM_PASSWORD');
+  if (!base) missing.push('RENTMANAGER_BASE_URL');
+  if (!username) missing.push('RENTMANAGER_USERNAME');
+  if (!password) missing.push('RENTMANAGER_PASSWORD');
   if (missing.length) {
-    console.error(
-      `Missing required config: ${missing.join(', ')}.\n` +
-        `Create a .env file (see .env.example).`
-    );
+    console.error(`Missing required config: ${missing.join(', ')}. Create a .env file.`);
     process.exit(1);
   }
-
-  const base = `https://${subdomain}.api.rentmanager.com`;
 
   // 1) Authenticate ----------------------------------------------------------
   console.log(`Authenticating to ${base}/Authentication/AuthorizeUser ...`);
   const authRes = await fetch(`${base}/Authentication/AuthorizeUser`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ Username: username, Password: password }),
+    body: JSON.stringify({ Username: username, Password: password, LocationID: locationId }),
   });
-
   const authBody = await authRes.text();
   if (!authRes.ok) {
     console.error(`Auth failed: HTTP ${authRes.status} ${authRes.statusText}`);
     console.error(authBody);
     process.exit(1);
   }
-
-  // AuthorizeUser returns the token as a raw string, which JSON-encodes as a
-  // quoted string (e.g. "abc123..."). Parse if it looks like JSON, else use raw.
   let token = authBody.trim();
   try {
     const parsed = JSON.parse(authBody);
     if (typeof parsed === 'string') token = parsed;
-    else if (parsed && typeof parsed === 'object') {
-      token = parsed.Token || parsed.token || parsed.ApiToken || token;
-    }
+    else if (parsed && typeof parsed === 'object') token = parsed.Token || parsed.token || token;
   } catch (_) {
-    // not JSON — strip surrounding quotes if present
     token = token.replace(/^"|"$/g, '');
-  }
-
-  if (!token) {
-    console.error('Could not extract a token from the auth response:');
-    console.error(authBody);
-    process.exit(1);
   }
   console.log(`Got token (${token.length} chars): ${token.slice(0, 8)}...\n`);
 
-  // 2) Endpoints to probe ----------------------------------------------------
-  // Explicit list plus name-match candidates (Bill/Estimate/Attachment/Document).
+  // 2) Endpoints relevant to creating an AP bill + attaching the PDF ---------
   const endpoints = [
-    '/Projects',
-    '/ServiceManagerProjects',
-    '/ServiceManagerIssues',
-    '/Vendors',
-    '/GLAccounts',
-    '/Properties',
-    // "Bill"
-    '/Bills',
-    '/VendorBills',
-    // "Estimate"
-    '/Estimates',
-    '/ServiceManagerEstimates',
-    // "Attachment"
-    '/Attachments',
-    // "Document"
-    '/Documents',
+    '/Bills?pageSize=2&embeds=GLAccount,Property,Vendor',
+    '/Vendors?pageSize=2',
+    '/GLAccounts?pageSize=5',
+    '/Properties?pageSize=2',
+    '/Accounts?pageSize=2',
+    '/Attachments?pageSize=2',
+    '/Documents?pageSize=2',
+    // candidates for where attachments hang off a bill
+    '/Bills?pageSize=1&embeds=Attachments',
   ];
 
-  const headers = {
-    'X-RM12Api-ApiToken': token,
-    Accept: 'application/json',
-  };
-
+  const headers = { 'X-RM12API': token, Accept: 'application/json' };
   let headersDumped = false;
 
   for (const ep of endpoints) {
-    const url = `${base}${ep}`;
     console.log('\n' + '='.repeat(70));
     console.log(`GET ${ep}`);
     console.log('='.repeat(70));
     try {
-      const res = await fetch(url, { headers });
-
-      // 3) Dump full response headers for the very first call so the
-      //    rate-limit headers are visible.
+      const res = await fetch(`${base}${ep}`, { headers });
       if (!headersDumped) {
         console.log('--- Response headers (full dump for this call) ---');
-        for (const [k, v] of res.headers.entries()) {
-          console.log(`  ${k}: ${v}`);
-        }
+        for (const [k, v] of res.headers.entries()) console.log(`  ${k}: ${v}`);
         console.log('--------------------------------------------------');
         headersDumped = true;
       }
-
       console.log(`Status: ${res.status} ${res.statusText}`);
-
-      if (res.status === 404) {
-        console.log('-> 404 Not Found, skipping.');
-        continue;
-      }
-
+      if (res.status === 404) { console.log('-> 404 Not Found, skipping.'); continue; }
       const text = await res.text();
-      if (!res.ok) {
-        console.log(`-> Non-OK response, body:`);
-        console.log(truncate(text, 1000));
-        continue;
-      }
-
+      if (!res.ok) { console.log('-> Non-OK body:'); console.log(truncate(text, 1000)); continue; }
       let data;
-      try {
-        data = JSON.parse(text);
-      } catch (_) {
-        console.log('-> Response was not JSON. Raw body:');
-        console.log(truncate(text, 1000));
-        continue;
-      }
-
+      try { data = JSON.parse(text); } catch (_) { console.log('-> Not JSON:'); console.log(truncate(text, 1000)); continue; }
       console.log('Shape:', JSON.stringify(shapeOf(data)));
       console.log('First record:');
       console.log(truncate(JSON.stringify(firstRecord(data), null, 2)));
@@ -215,11 +154,7 @@ async function main() {
       console.log(`-> Request error for ${ep}: ${err.message} (continuing)`);
     }
   }
-
   console.log('\nDone.');
 }
 
-main().catch((err) => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+main().catch((err) => { console.error('Fatal error:', err); process.exit(1); });
