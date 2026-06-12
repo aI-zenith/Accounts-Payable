@@ -143,11 +143,18 @@ router.get(
   '/settings/rm-discovery',
   wrap(async (req, res) => {
     const endpoints = [
-      '/Bills?pageSize=2',
-      '/Bills?pageSize=1&embeds=GLAccount,Property,Vendor',
-      '/Vendors?pageSize=2',
-      '/GLAccounts?pageSize=5',
-      '/Properties?pageSize=2',
+      // Find the bill's child distribution structure (which embed name is valid).
+      '/Bills/1?embeds=Charges',
+      '/Bills/1?embeds=BillCharges',
+      '/Bills/1?embeds=GLTransactions',
+      '/Bills/1?embeds=Account',
+      '/Bills/1?embeds=OpenAmounts',
+      // Expense GL accounts (what AP bills post against).
+      '/GLAccounts?filters=GLAccountType,eq,Expense&pageSize=10',
+      // Confirm vendor + property lookups by name work (for mapping).
+      '/Vendors?filters=Name,contains,Depot&pageSize=5',
+      '/Properties?filters=ShortName,contains,dolphin&pageSize=5',
+      '/Properties?filters=Name,contains,dolphin&pageSize=5',
     ];
 
     const result = {};
