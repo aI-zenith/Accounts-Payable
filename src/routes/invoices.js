@@ -2,26 +2,17 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
-import { randomUUID } from 'node:crypto';
 import { query } from '../db/pool.js';
 import { extractInvoice } from '../services/extract.js';
 import { createProject, attachDocument } from '../services/rmClient.js';
 
 const router = Router();
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-    cb(null, `${Date.now()}-${randomUUID().slice(0, 8)}-${safe}`);
-  },
-});
-
+// PDFs are stored in Postgres (see migrate.js) so they survive deploys/restarts
+// on ephemeral hosting. multer keeps the upload in memory just long enough to
+// write the bytes to the database.
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
   fileFilter: (req, file, cb) => {
     if (file.mimetype === 'application/pdf') return cb(null, true);
@@ -30,6 +21,12 @@ const upload = multer({
 });
 
 const STATUSES = ['pending', 'extracting', 'extracted', 'confirmed', 'pushed', 'error'];
+
+// Columns to select for lists/review — deliberately excludes the heavy
+// `file_data` bytea so it is only ever loaded when streaming the PDF.
+const INVOICE_COLS =
+  'id, original_name, stored_path, status, extracted, vendor_name, invoice_number, ' +
+  'invoice_date, total, rm_project_id, rm_attachment_id, error_msg, created_at, updated_at';
 
 // Small async wrapper so thrown errors reach the error middleware.
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -42,7 +39,7 @@ const loadInvoice = wrap(async (req, res, next) => {
     err.status = 400;
     throw err;
   }
-  const { rows } = await query('SELECT * FROM invoices WHERE id = $1', [id]);
+  const { rows } = await query(`SELECT ${INVOICE_COLS} FROM invoices WHERE id = $1`, [id]);
   if (!rows[0]) {
     const err = new Error('Invoice not found.');
     err.status = 404;
@@ -54,10 +51,10 @@ const loadInvoice = wrap(async (req, res, next) => {
 
 // --- background extraction -------------------------------------------------
 // Fired without awaiting from the upload handler. Updates status as it goes.
-async function processInvoice(id, filePath) {
+async function processInvoice(id, pdfBuffer) {
   try {
     await query("UPDATE invoices SET status = 'extracting', updated_at = now() WHERE id = $1", [id]);
-    const data = await extractInvoice(filePath);
+    const data = await extractInvoice(pdfBuffer);
 
     await query(
       `UPDATE invoices
@@ -105,8 +102,8 @@ router.get(
   wrap(async (req, res) => {
     const filter = STATUSES.includes(req.query.status) ? req.query.status : null;
     const sql = filter
-      ? 'SELECT * FROM invoices WHERE status = $1 ORDER BY created_at DESC'
-      : 'SELECT * FROM invoices ORDER BY created_at DESC';
+      ? `SELECT ${INVOICE_COLS} FROM invoices WHERE status = $1 ORDER BY created_at DESC`
+      : `SELECT ${INVOICE_COLS} FROM invoices ORDER BY created_at DESC`;
     const { rows } = await query(sql, filter ? [filter] : []);
 
     res.render('dashboard', {
@@ -135,14 +132,14 @@ router.post(
       return res.redirect('/?notice=' + encodeURIComponent('Please choose a PDF to upload.'));
     }
     const { rows } = await query(
-      `INSERT INTO invoices (original_name, stored_path, status)
-       VALUES ($1, $2, 'pending') RETURNING id`,
-      [req.file.originalname, req.file.path]
+      `INSERT INTO invoices (original_name, status, file_data, mime_type)
+       VALUES ($1, 'pending', $2, $3) RETURNING id`,
+      [req.file.originalname, req.file.buffer, req.file.mimetype]
     );
     const id = rows[0].id;
 
     // Kick off extraction without blocking the response.
-    processInvoice(id, req.file.path);
+    processInvoice(id, req.file.buffer);
 
     res.redirect('/?notice=' + encodeURIComponent(`Uploaded "${req.file.originalname}" — extracting…`));
   })
@@ -153,18 +150,41 @@ router.get(
   '/file/:id',
   loadInvoice,
   wrap(async (req, res) => {
-    const filePath = path.resolve(req.invoice.stored_path);
-    if (!fs.existsSync(filePath)) {
-      const err = new Error('Stored PDF is missing on disk.');
-      err.status = 404;
-      throw err;
-    }
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader(
-      'Content-Disposition',
-      `inline; filename="${encodeURIComponent(req.invoice.original_name)}"`
+    const setHeaders = () => {
+      res.setHeader('Content-Type', req.invoice.mime_type || 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${encodeURIComponent(req.invoice.original_name)}"`
+      );
+    };
+
+    // Primary path: the PDF bytes live in the database.
+    const { rows } = await query(
+      'SELECT file_data, mime_type FROM invoices WHERE id = $1',
+      [req.invoice.id]
     );
-    fs.createReadStream(filePath).pipe(res);
+    const fileData = rows[0]?.file_data;
+    if (fileData) {
+      res.setHeader('Content-Type', rows[0].mime_type || 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${encodeURIComponent(req.invoice.original_name)}"`
+      );
+      return res.end(fileData);
+    }
+
+    // Fallback: a legacy record whose bytes were only ever on disk.
+    if (req.invoice.stored_path) {
+      const filePath = path.resolve(req.invoice.stored_path);
+      if (fs.existsSync(filePath)) {
+        setHeaders();
+        return fs.createReadStream(filePath).pipe(res);
+      }
+    }
+
+    const err = new Error('This invoice was uploaded before files were stored in the database, so its PDF is no longer available. Please re-upload it.');
+    err.status = 404;
+    throw err;
   })
 );
 
@@ -282,8 +302,11 @@ router.get(
   '/invoice/:id/delete',
   loadInvoice,
   wrap(async (req, res) => {
-    const filePath = path.resolve(req.invoice.stored_path);
-    fs.rm(filePath, { force: true }, () => {});
+    // Best-effort cleanup of any legacy on-disk file; the row (incl. bytes) is
+    // the source of truth.
+    if (req.invoice.stored_path) {
+      fs.rm(path.resolve(req.invoice.stored_path), { force: true }, () => {});
+    }
     await query('DELETE FROM invoices WHERE id = $1', [req.invoice.id]);
     res.redirect('/?notice=' + encodeURIComponent('Invoice deleted.'));
   })

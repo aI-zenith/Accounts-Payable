@@ -99,7 +99,9 @@ red = failed.
 | `RM_SUBDOMAIN` / `RM_USERNAME` / `RM_PASSWORD` | legacy fallbacks |
 | `PORT` | default `3000` |
 | `NODE_ENV` | `development` / `production` |
-| `UPLOAD_DIR` | where PDFs are stored (default `./uploads`) |
+
+Uploaded PDFs are stored in Postgres (the `invoices.file_data` column), so they
+survive deploys and restarts — no persistent disk or `UPLOAD_DIR` is required.
 
 ## Deploy: GitHub → Render
 
@@ -108,8 +110,7 @@ red = failed.
 - **Build:** `npm install && npm run migrate`
 - **Start:** `npm start`
 - **Node:** 20
-- A **persistent disk** mounted at `/uploads` so uploaded PDFs survive deploys
-  (set `UPLOAD_DIR=/uploads`, which the blueprint does).
+- No persistent disk required — PDFs are stored in Postgres.
 - All secrets are declared with `sync: false`, so they are **set in the Render
   dashboard**, not committed to the repo.
 

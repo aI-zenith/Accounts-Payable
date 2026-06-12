@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import Anthropic from '@anthropic-ai/sdk';
 import { getCredentials } from './credentials.js';
 
@@ -52,14 +51,13 @@ function stripFences(text) {
 }
 
 /**
- * Extract structured invoice data from a PDF on disk.
- * @param {string} filePath absolute or relative path to the PDF
+ * Extract structured invoice data from a PDF.
+ * @param {Buffer} pdfBuffer the raw PDF bytes
  * @returns {Promise<object>} parsed JSON matching the schema above
  * @throws {Error} on parse failure; the raw model text is attached as err.raw
  */
-export async function extractInvoice(filePath) {
+export async function extractInvoice(pdfBuffer) {
   const client = await getClient();
-  const pdfBuffer = await readFile(filePath);
   const base64 = pdfBuffer.toString('base64');
 
   const message = await client.messages.create({

@@ -32,6 +32,13 @@ const STATEMENTS = [
 
   // Ensure the singleton row exists so settings reads/upserts are simple.
   `INSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING`,
+
+  // Store the original PDF bytes in the database so files survive deploys /
+  // restarts on ephemeral hosting (no persistent disk required).
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS file_data bytea`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS mime_type text`,
+  // stored_path is now optional (legacy/disk fallback only).
+  `ALTER TABLE invoices ALTER COLUMN stored_path DROP NOT NULL`,
 ];
 
 export async function runMigrations() {
