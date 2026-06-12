@@ -24,6 +24,18 @@ function pick(dbValue, envValue) {
   return envValue || null;
 }
 
+// Turn whatever was provided (bare subdomain / hostname / full URL) into a
+// clean base URL, with the RENTMANAGER_BASE_URL env as fallback.
+function resolveBaseUrl(subdomain, envBase) {
+  const s = (subdomain || '').trim();
+  if (s) {
+    if (/^https?:\/\//i.test(s)) return s.replace(/\/+$/, '');
+    if (s.includes('.')) return `https://${s.replace(/\/+$/, '')}`;
+    return `https://${s}.api.rentmanager.com`;
+  }
+  return envBase ? envBase.trim().replace(/\/+$/, '') : null;
+}
+
 export async function getCredentials() {
   let row = {};
   try {
@@ -36,13 +48,12 @@ export async function getCredentials() {
     console.error('[credentials] could not read settings row:', err.message);
   }
 
-  // Resolve the API base URL. A subdomain saved in Settings derives the URL;
-  // otherwise fall back to the full RENTMANAGER_BASE_URL, then a RM_SUBDOMAIN.
+  // Resolve the API base URL. The Settings "subdomain" field is tolerant: it
+  // accepts a bare subdomain ("bluegm"), a hostname ("bluegm.api.rentmanager.com"),
+  // or a full URL ("https://bluegm.api.rentmanager.com"). Falls back to the
+  // RENTMANAGER_BASE_URL env var, then a bare RM_SUBDOMAIN.
   const subdomain = row.rm_subdomain || process.env.RM_SUBDOMAIN || null;
-  const baseUrl =
-    (subdomain && `https://${subdomain}.api.rentmanager.com`) ||
-    process.env.RENTMANAGER_BASE_URL ||
-    null;
+  const baseUrl = resolveBaseUrl(subdomain, process.env.RENTMANAGER_BASE_URL);
 
   return {
     rm: {

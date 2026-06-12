@@ -2,7 +2,7 @@
 //
 // AUTH IS WIRED for this account (company code `bluegm`):
 //   - Base URL:   https://bluegm.api.rentmanager.com  (RENTMANAGER_BASE_URL)
-//   - Auth:       POST /authentication/AuthenticateUser
+//   - Auth:       POST /Authentication/AuthorizeUser
 //                 body { Username, Password, LocationID }
 //   - The response is the token as a (JSON-quoted) string.
 //   - Every subsequent request carries header  X-RM12API: <token>
@@ -40,7 +40,7 @@ export async function authenticate() {
   }
   const base = trimSlash(rm.baseUrl);
 
-  const res = await fetch(`${base}/authentication/AuthenticateUser`, {
+  const res = await fetch(`${base}/Authentication/AuthorizeUser`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({
