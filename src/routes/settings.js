@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { query } from '../db/pool.js';
 import { encrypt, decrypt, mask } from '../services/crypto.js';
 import { getCredentials } from '../services/credentials.js';
-import { authenticate, _resetTokenCache } from '../services/rmClient.js';
+import { authenticate, _resetTokenCache, request } from '../services/rmClient.js';
 
 const router = Router();
 
@@ -131,6 +131,46 @@ router.post(
     } catch (err) {
       res.json({ ok: false, message: err.message });
     }
+  })
+);
+
+// --- GET /settings/rm-discovery -------------------------------------------
+// TEMPORARY diagnostic: authenticates and reads a few read-only endpoints so we
+// can see the exact fields needed to build an Accounts Payable bill + attach the
+// PDF. Returns JSON (shape + first record per endpoint). Remove once the push is
+// wired. Runs from Render, which can reach the RM API.
+router.get(
+  '/settings/rm-discovery',
+  wrap(async (req, res) => {
+    const endpoints = [
+      '/Bills?pageSize=2',
+      '/Bills?pageSize=1&embeds=GLAccount,Property,Vendor,Attachments',
+      '/Vendors?pageSize=2',
+      '/GLAccounts?pageSize=5',
+      '/Properties?pageSize=2',
+      '/Accounts?pageSize=2',
+      '/Attachments?pageSize=2',
+      '/Documents?pageSize=2',
+    ];
+
+    const result = {};
+    for (const ep of endpoints) {
+      try {
+        const { status, body } = await request(ep);
+        const arr = Array.isArray(body) ? body : body ? [body] : [];
+        const first = arr[0] ?? null;
+        result[ep] = {
+          status,
+          count: Array.isArray(body) ? body.length : undefined,
+          keys: first && typeof first === 'object' ? Object.keys(first) : null,
+          firstRecord: first,
+        };
+      } catch (err) {
+        result[ep] = { error: err.message, status: err.status ?? null };
+      }
+    }
+
+    res.json(result);
   })
 );
 
