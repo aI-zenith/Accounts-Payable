@@ -9,11 +9,11 @@
 //   - On a 401 the client re-authenticates and retries the request once.
 //   - Tokens are cached in module scope and proactively refreshed after a TTL.
 //
-// The WRITE operations (createProject / attachDocument) remain STUBS: their
-// exact resource paths/payloads are still pending API discovery. They are
-// backed by the working request() helper, so wiring them later is a one-liner.
+// WRITE: pushes an invoice to Rent Manager as a Credit Card Transaction
+// (POST /CreditCardTransactions) after resolving the credit card, vendor, and
+// property by name. Vendors are auto-created when missing; an unmatched
+// property/job is flagged for manual review by the route.
 
-import { readFile } from 'node:fs/promises';
 import { getCredentials } from './credentials.js';
 
 // Proactively re-auth tokens older than this (ms). 401-retry covers the rest.
@@ -166,31 +166,81 @@ export async function request(path, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// WRITE OPERATIONS — STUBS. Wire after confirming the resource paths.
+// LOOKUPS + CREDIT CARD TRANSACTION CREATION
 // ---------------------------------------------------------------------------
 
-/**
- * Create the Rent Manager record for a confirmed invoice.
- * STUB: target endpoint/payload pending API discovery. Intended to return the
- * new record id (from the Location header or the response body).
- */
-export async function createProject(data) {
-  // TODO(discovery): e.g.
-  //   const { location, body } = await request('/projects', {
-  //     method: 'POST', body: JSON.stringify(mapInvoiceToProject(data)),
-  //   });
-  //   return idFromLocation(location) ?? body?.ProjectID;
-  throw new Error('TODO: wire endpoint after discovery');
+// Normalize a name for fuzzy matching: lowercase, collapse non-alphanumerics.
+function norm(s) {
+  return String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+// Pick the best match for `needle` among `items`, reading candidate names via
+// `nameFns`. Prefers an exact normalized match, then a substring match either
+// direction (e.g. "the home depot" ~ "home depot", "dolphin" ~ "Dolphin Gardens").
+function bestMatch(needle, items, nameFns) {
+  const n = norm(needle);
+  if (!n || !Array.isArray(items)) return null;
+  let partial = null;
+  for (const it of items) {
+    for (const fn of nameFns) {
+      const cand = norm(fn(it));
+      if (!cand) continue;
+      if (cand === n) return it;
+      if (!partial && (cand.includes(n) || n.includes(cand))) partial = it;
+    }
+  }
+  return partial;
+}
+
+function idFromLocation(loc) {
+  if (!loc) return null;
+  const m = String(loc).match(/(\d+)\s*$/);
+  return m ? Number(m[1]) : null;
+}
+
+async function listAll(path) {
+  const { body } = await request(path);
+  return Array.isArray(body) ? body : body ? [body] : [];
+}
+
+export async function findCreditCardByName(name) {
+  const cards = await listAll('/CreditCards?pageSize=500');
+  return bestMatch(name, cards, [(c) => c.Name]);
+}
+
+export async function findVendorByName(name) {
+  const vendors = await listAll('/Vendors?pageSize=1000');
+  return bestMatch(name, vendors, [(v) => v.Name, (v) => v.Payee]);
+}
+
+export async function findPropertyByName(name) {
+  const props = await listAll('/Properties?pageSize=1000');
+  return bestMatch(name, props, [(p) => p.Name, (p) => p.ShortName]);
+}
+
+// Create a vendor when the invoice's merchant isn't found, then return it.
+export async function createVendor(name) {
+  const { body, location } = await request('/Vendors', {
+    method: 'POST',
+    body: JSON.stringify({ Name: name, IsActive: true }),
+  });
+  const id = (body && (body.VendorID || body.ID)) || idFromLocation(location);
+  return { VendorID: id, Name: name };
 }
 
 /**
- * Attach the original invoice PDF to a Rent Manager record.
- * STUB: target endpoint/upload shape pending API discovery.
+ * POST a credit card transaction. `payload` keys must match the WAPI schema
+ * (see buildCreditCardTransaction in the invoices route). Returns the new id.
  */
-export async function attachDocument(parentId, filePath) {
-  // TODO(discovery): read the file and POST to the confirmed attachment endpoint.
-  void readFile; // keep the intended dependency visible
-  throw new Error('TODO: wire endpoint after discovery');
+export async function createCreditCardTransaction(payload) {
+  const { body, location } = await request('/CreditCardTransactions', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return (
+    (body && (body.CreditCardTransactionID || body.TransactionID || body.ID)) ||
+    idFromLocation(location)
+  );
 }
 
 // Test-only helper used by the Settings connection test.

@@ -3,7 +3,7 @@
   const items = Array.isArray(data.line_items) ? data.line_items : [];
   const pillClass = (s) => ({
     pending: 'pill--pending', extracting: 'pill--extracting', extracted: 'pill--extracted',
-    confirmed: 'pill--confirmed', pushed: 'pill--pushed', error: 'pill--error',
+    confirmed: 'pill--confirmed', needs_review: 'pill--review', pushed: 'pill--pushed', error: 'pill--error',
   }[s] || 'pill--pending');
 %>
 
@@ -12,7 +12,7 @@
     <a class="backlink" href="/">← All invoices</a>
     <h1 class="page-title"><%= invoice.original_name %></h1>
   </div>
-  <span class="pill <%= pillClass(invoice.status) %>"><%= invoice.status %></span>
+  <span class="pill <%= pillClass(invoice.status) %>"><%= invoice.status.replace(/_/g, ' ') %></span>
 </section>
 
 <% if (invoice.status === 'error') { %>

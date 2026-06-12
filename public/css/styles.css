@@ -396,6 +396,7 @@ input:focus-visible,
 .pill--extracting { background: var(--blue-wash); color: var(--blue); }
 .pill--extracted { background: var(--accent-wash); color: var(--accent-deep); }
 .pill--confirmed { background: var(--green-wash); color: var(--green); }
+.pill--review { background: var(--accent-wash); color: var(--accent-deep); }
 .pill--pushed { background: var(--green-wash); color: var(--green); }
 .pill--error { background: var(--red-wash); color: var(--red); }
 

@@ -15,6 +15,7 @@
     extracting: 'pill--extracting',
     extracted: 'pill--extracted',
     confirmed: 'pill--confirmed',
+    needs_review: 'pill--review',
     pushed: 'pill--pushed',
     error: 'pill--error',
   }[s] || 'pill--pending');
@@ -41,7 +42,7 @@
 <nav class="filters" aria-label="Filter by status">
   <a class="filter <%= !filter ? 'is-active' : '' %>" href="/">All</a>
   <% statuses.forEach((s) => { %>
-    <a class="filter <%= filter === s ? 'is-active' : '' %>" href="/?status=<%= s %>"><%= s %></a>
+    <a class="filter <%= filter === s ? 'is-active' : '' %>" href="/?status=<%= s %>"><%= s.replace(/_/g, ' ') %></a>
   <% }) %>
 </nav>
 
@@ -73,7 +74,7 @@
             <td data-label="Date"><%= fmtDate(inv.invoice_date) %></td>
             <td data-label="Total" class="num"><%= fmtMoney(inv.total) %></td>
             <td data-label="Status">
-              <span class="pill <%= pillClass(inv.status) %>"><%= inv.status %></span>
+              <span class="pill <%= pillClass(inv.status) %>"><%= inv.status.replace(/_/g, ' ') %></span>
             </td>
             <td data-label="Action" class="actions-col">
               <a class="rowlink" href="/invoice/<%= inv.id %>">Review</a>

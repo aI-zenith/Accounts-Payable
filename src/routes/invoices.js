@@ -4,7 +4,13 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { query } from '../db/pool.js';
 import { extractInvoice } from '../services/extract.js';
-import { createProject, attachDocument } from '../services/rmClient.js';
+import {
+  findCreditCardByName,
+  findVendorByName,
+  createVendor,
+  findPropertyByName,
+  createCreditCardTransaction,
+} from '../services/rmClient.js';
 
 const router = Router();
 
@@ -20,7 +26,7 @@ const upload = multer({
   },
 });
 
-const STATUSES = ['pending', 'extracting', 'extracted', 'confirmed', 'pushed', 'error'];
+const STATUSES = ['pending', 'extracting', 'extracted', 'confirmed', 'needs_review', 'pushed', 'error'];
 
 // Columns to select for lists/review — deliberately excludes the heavy
 // `file_data` bytea so it is only ever loaded when streaming the PDF.
@@ -266,34 +272,83 @@ router.post(
   })
 );
 
+// Build a short memo from the line items (or invoice number).
+function memoFrom(d) {
+  const items = Array.isArray(d.line_items) ? d.line_items : [];
+  const desc = items.map((li) => li.description).filter(Boolean).slice(0, 5).join('; ');
+  if (desc) return desc.slice(0, 250);
+  return d.invoice_number ? `Invoice ${d.invoice_number}` : '';
+}
+
+// Map the extracted invoice + resolved RM records into the POST body.
+// NOTE: field names follow the documented "Add Credit Card Transaction" form;
+// confirm against the live schema (the rm-discovery output) and adjust here only.
+function buildCreditCardTransaction({ card, vendor, property, d }) {
+  return {
+    CreditCardID: card.CreditCardID ?? card.ID,
+    Date: normalizeDate(d.invoice_date) || new Date().toISOString().slice(0, 10),
+    Reference: d.invoice_number || '',
+    VendorID: vendor.VendorID ?? vendor.ID,
+    Amount: normalizeNumber(d.total) ?? 0,
+    Type: 'Charge',
+    Memo: memoFrom(d),
+    PropertyID: property.PropertyID ?? property.ID,
+    // Job left unassigned and Expense Account blank, per spec.
+  };
+}
+
 // --- POST /invoice/:id/push -----------------------------------------------
+// Pushes the invoice to Rent Manager as a Credit Card Transaction.
 router.post(
   '/invoice/:id/push',
   loadInvoice,
   wrap(async (req, res) => {
     const inv = req.invoice;
-    try {
-      const projectId = await createProject(inv.extracted || {});
-      const attachmentId = await attachDocument(projectId, inv.stored_path);
+    const d = inv.extracted || {};
+
+    // Flag for manual review (no silent failures): keep the row, record why.
+    const flag = async (msg) => {
       await query(
-        `UPDATE invoices
-           SET status = 'pushed', rm_project_id = $2, rm_attachment_id = $3, updated_at = now()
-         WHERE id = $1`,
-        [inv.id, String(projectId), String(attachmentId)]
+        "UPDATE invoices SET status = 'needs_review', error_msg = $2, updated_at = now() WHERE id = $1",
+        [inv.id, msg]
       );
-      return res.redirect(
-        `/invoice/${inv.id}?notice=` + encodeURIComponent('Pushed to Rent Manager.')
+      return res.redirect(`/invoice/${inv.id}?notice=` + encodeURIComponent(msg));
+    };
+
+    try {
+      // 1) Credit card — required; a missing/unmatched card is a hard stop.
+      if (!d.credit_card) return flag('Needs review: no credit card found on the invoice.');
+      const card = await findCreditCardByName(d.credit_card);
+      if (!card) return flag(`Credit card not found: ${d.credit_card}`);
+
+      // 2) Vendor — match by merchant name, create if it doesn't exist.
+      let vendor = d.vendor_name ? await findVendorByName(d.vendor_name) : null;
+      if (!vendor && d.vendor_name) {
+        vendor = await createVendor(d.vendor_name);
+      }
+      if (!vendor) return flag('Needs review: no vendor/merchant on the invoice.');
+
+      // 3) Property/job — flag for manual review if unmatched.
+      const property = d.property_reference ? await findPropertyByName(d.property_reference) : null;
+      if (!property) {
+        return flag(`Needs review: property/job not matched ("${d.property_reference || ''}").`);
+      }
+
+      // 4) Create the transaction.
+      const payload = buildCreditCardTransaction({ card, vendor, property, d });
+      const txnId = await createCreditCardTransaction(payload);
+
+      await query(
+        "UPDATE invoices SET status = 'pushed', rm_project_id = $2, updated_at = now() WHERE id = $1",
+        [inv.id, txnId != null ? String(txnId) : null]
       );
-    } catch (err) {
-      // The stubs throw a TODO error until the endpoints are wired. Surface a
-      // friendly message and keep the invoice in its confirmed state.
-      console.warn(`[invoices] push not wired for #${inv.id}: ${err.message}`);
       return res.redirect(
         `/invoice/${inv.id}?notice=` +
-          encodeURIComponent(
-            'Push to Rent Manager is not wired up yet (pending API discovery). The invoice is saved as confirmed.'
-          )
+          encodeURIComponent(`Pushed to Rent Manager — credit card transaction ${txnId ?? 'created'}.`)
       );
+    } catch (err) {
+      console.error(`[invoices] push failed for #${inv.id}:`, err.message);
+      return flag(`Push failed: ${err.message}`);
     }
   })
 );
