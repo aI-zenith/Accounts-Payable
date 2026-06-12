@@ -34,7 +34,7 @@ const STATEMENTS = [
   `INSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING`,
 ];
 
-async function migrate() {
+export async function runMigrations() {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -52,7 +52,14 @@ async function migrate() {
   }
 }
 
-migrate()
-  .then(() => pool.end())
-  .then(() => process.exit(0))
-  .catch(() => process.exit(1));
+// When run directly (`npm run migrate`), execute and exit. When imported (e.g.
+// by the server at startup), only the exported function runs — no side effects.
+const invokedDirectly =
+  process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+
+if (invokedDirectly) {
+  runMigrations()
+    .then(() => pool.end())
+    .then(() => process.exit(0))
+    .catch(() => process.exit(1));
+}

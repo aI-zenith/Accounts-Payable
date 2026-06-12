@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import invoiceRoutes from './routes/invoices.js';
 import settingsRoutes from './routes/settings.js';
 import { warmToken } from './services/rmClient.js';
+import { runMigrations } from './db/migrate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -61,6 +62,17 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
+
+// Ensure the schema exists before serving. Idempotent (CREATE ... IF NOT EXISTS),
+// so this is safe on every boot and removes the need for a separate build step.
+// Non-fatal: if the DB is unreachable we still start so /healthz responds and
+// the error surfaces in request handlers rather than crash-looping.
+try {
+  await runMigrations();
+} catch (err) {
+  console.error('[startup] migration failed, continuing:', err.message);
+}
+
 app.listen(PORT, () => {
   console.log(`Invoice Bridge listening on http://localhost:${PORT}`);
   // Pre-authenticate with Rent Manager on startup (non-fatal if unconfigured).
