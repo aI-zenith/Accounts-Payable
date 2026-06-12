@@ -1,0 +1,37 @@
+# Render blueprint for Invoice Bridge.
+# Secrets are declared with sync:false so they are set in the Render
+# dashboard rather than committed to the repository.
+services:
+  - type: web
+    name: invoice-bridge
+    runtime: node
+    plan: starter
+    region: oregon
+    branch: main
+    buildCommand: npm install && npm run migrate
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    disk:
+      name: invoice-uploads
+      mountPath: /uploads
+      sizeGB: 5
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: UPLOAD_DIR
+        value: /uploads
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_ENCRYPTION_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: RM_SUBDOMAIN
+        sync: false
+      - key: RM_USERNAME
+        sync: false
+      - key: RM_PASSWORD
+        sync: false
