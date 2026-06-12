@@ -161,34 +161,23 @@ router.get(
       };
     };
 
+    // Probe a custom set of endpoints via ?eps=ep1||ep2 (||-separated, since
+    // endpoints contain commas in embeds). Defaults to hunting for the credit
+    // card transaction's child property/GL allocation structure.
+    const defaults = [
+      '/CreditCardTransactions/1?embeds=Charges',
+      '/CreditCardTransactions/1?embeds=GLAllocations',
+      '/CreditCardTransactions/1?embeds=Allocations',
+      '/CreditCardTransactions/1?embeds=GLTransactions',
+      '/CreditCardTransactions/1?embeds=Account',
+      '/CreditCardTransactions/1?embeds=Properties',
+    ];
+    const eps = req.query.eps ? String(req.query.eps).split('||') : defaults;
+
     const result = {};
-
-    // The two we most need: the create-schema for credit card transactions, and
-    // the list of credit cards to match by name.
-    result.creditCardTransactionSchema = schemaOf(await get('/CreditCardTransactions?pageSize=2'));
-    const cards = await get('/CreditCards?pageSize=100');
-    result.creditCards = Array.isArray(cards)
-      ? cards.map((c) => ({ id: c.CreditCardID ?? c.ID, name: c.Name, keys: undefined }))
-      : cards;
-    result.creditCardSchema = schemaOf(cards);
-
-    // Pick-lists for vendor / property matching.
-    const vendors = await get('/Vendors?pageSize=250');
-    result.vendors = Array.isArray(vendors)
-      ? vendors.map((v) => ({ id: v.VendorID, name: v.Name, active: v.IsActive }))
-      : vendors;
-
-    const props = await get('/Properties?pageSize=250');
-    result.properties = Array.isArray(props)
-      ? props.map((p) => ({ id: p.PropertyID, name: p.Name, shortName: p.ShortName }))
-      : props;
-
-    result.counts = {
-      creditCards: Array.isArray(result.creditCards) ? result.creditCards.length : null,
-      vendors: Array.isArray(result.vendors) ? result.vendors.length : null,
-      properties: Array.isArray(result.properties) ? result.properties.length : null,
-    };
-
+    for (const ep of eps) {
+      result[ep] = schemaOf(await get(ep));
+    }
     res.json(result);
   })
 );

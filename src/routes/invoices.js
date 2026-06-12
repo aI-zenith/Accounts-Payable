@@ -281,19 +281,23 @@ function memoFrom(d) {
 }
 
 // Map the extracted invoice + resolved RM records into the POST body.
-// NOTE: field names follow the documented "Add Credit Card Transaction" form;
-// confirm against the live schema (the rm-discovery output) and adjust here only.
+// Field names are CONFIRMED from the live CreditCardTransactions schema:
+//   vendor -> AccountID + AccountType:"Vendor"; date -> TransactionDate;
+//   memo -> Comment. The property/GL allocation is a child structure (not on the
+//   header) and is added once its shape is confirmed via discovery.
 function buildCreditCardTransaction({ card, vendor, property, d }) {
   return {
     CreditCardID: card.CreditCardID ?? card.ID,
-    Date: normalizeDate(d.invoice_date) || new Date().toISOString().slice(0, 10),
+    AccountID: vendor.VendorID ?? vendor.ID,
+    AccountType: 'Vendor',
+    TransactionDate: normalizeDate(d.invoice_date) || new Date().toISOString().slice(0, 10),
     Reference: d.invoice_number || '',
-    VendorID: vendor.VendorID ?? vendor.ID,
+    Comment: memoFrom(d),
     Amount: normalizeNumber(d.total) ?? 0,
+    // "Charge" is the transaction direction; RM records TransactionType "CreditCard".
     Type: 'Charge',
-    Memo: memoFrom(d),
-    PropertyID: property.PropertyID ?? property.ID,
-    // Job left unassigned and Expense Account blank, per spec.
+    // TODO(property): attach `property` (PropertyID ${'${property?.PropertyID}'}) via the
+    // confirmed child allocation structure once discovery returns it.
   };
 }
 
