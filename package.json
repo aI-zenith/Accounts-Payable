@@ -1,0 +1,23 @@
+{
+  "name": "invoice-bridge",
+  "version": "1.0.0",
+  "description": "Invoice Bridge — vendor-invoice processing with Claude vision extraction, human review, and Rent Manager push.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "migrate": "node src/db/migrate.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.65.0",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "express-ejs-layouts": "^2.5.1",
+    "multer": "^2.0.1",
+    "pg": "^8.13.1"
+  }
+}

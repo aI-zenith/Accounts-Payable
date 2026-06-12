@@ -1,0 +1,88 @@
+<%
+  const fmtMoney = (v) => {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '—';
+    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+  const fmtDate = (d) => {
+    if (!d) return '—';
+    const dt = new Date(d);
+    return Number.isNaN(dt.getTime()) ? '—' : dt.toISOString().slice(0, 10);
+  };
+  const pillClass = (s) => ({
+    pending: 'pill--pending',
+    extracting: 'pill--extracting',
+    extracted: 'pill--extracted',
+    confirmed: 'pill--confirmed',
+    pushed: 'pill--pushed',
+    error: 'pill--error',
+  }[s] || 'pill--pending');
+%>
+
+<section class="page-head">
+  <h1 class="page-title">Invoices</h1>
+  <p class="page-sub">Upload vendor invoices, review the extraction, and push to Rent Manager.</p>
+</section>
+
+<form class="dropzone" id="dropzone" action="/upload" method="post" enctype="multipart/form-data">
+  <input type="file" name="invoice" id="fileInput" accept="application/pdf" hidden />
+  <div class="dropzone__inner" id="dropzoneInner">
+    <div class="dropzone__icon" aria-hidden="true">＋</div>
+    <p class="dropzone__lead">Drop an invoice PDF, or <button type="button" class="linkbtn" id="browseBtn">browse</button>.</p>
+    <p class="dropzone__hint">PDF only · up to 15&nbsp;MB</p>
+    <p class="dropzone__file" id="chosenFile" hidden></p>
+  </div>
+  <div class="dropzone__actions" id="dropzoneActions" hidden>
+    <button type="submit" class="btn btn--primary" id="uploadBtn">Upload and extract</button>
+  </div>
+</form>
+
+<nav class="filters" aria-label="Filter by status">
+  <a class="filter <%= !filter ? 'is-active' : '' %>" href="/">All</a>
+  <% statuses.forEach((s) => { %>
+    <a class="filter <%= filter === s ? 'is-active' : '' %>" href="/?status=<%= s %>"><%= s %></a>
+  <% }) %>
+</nav>
+
+<% if (invoices.length === 0) { %>
+  <div class="empty">
+    <p class="empty__title">No invoices yet</p>
+    <p class="empty__body">Drop a PDF above to get started. Extracted invoices will appear here as a running ledger.</p>
+  </div>
+<% } else { %>
+  <div class="ledger-wrap">
+    <table class="ledger">
+      <thead>
+        <tr>
+          <th>Vendor</th>
+          <th>Invoice #</th>
+          <th>Date</th>
+          <th class="num">Total</th>
+          <th>Status</th>
+          <th class="actions-col">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% invoices.forEach((inv) => { %>
+          <tr>
+            <td data-label="Vendor">
+              <span class="cell-primary"><%= inv.vendor_name || inv.original_name %></span>
+            </td>
+            <td data-label="Invoice #"><%= inv.invoice_number || '—' %></td>
+            <td data-label="Date"><%= fmtDate(inv.invoice_date) %></td>
+            <td data-label="Total" class="num"><%= fmtMoney(inv.total) %></td>
+            <td data-label="Status">
+              <span class="pill <%= pillClass(inv.status) %>"><%= inv.status %></span>
+            </td>
+            <td data-label="Action" class="actions-col">
+              <a class="rowlink" href="/invoice/<%= inv.id %>">Review</a>
+              <a class="rowlink rowlink--quiet" href="/invoice/<%= inv.id %>/delete"
+                 onclick="return confirm('Delete this invoice and its PDF?');">Delete</a>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>

@@ -1,0 +1,64 @@
+<section class="page-head">
+  <h1 class="page-title">Settings</h1>
+  <p class="page-sub">Credentials are encrypted at rest. Leave a field blank to keep the stored value.</p>
+</section>
+
+<form class="settings" action="/settings" method="post">
+  <!-- Rent Manager -->
+  <section class="card ledger-rule" data-integration="rentmanager">
+    <header class="card__head">
+      <div class="card__title">
+        <span class="dot" data-dot aria-hidden="true"></span>
+        <h2>Rent Manager</h2>
+      </div>
+      <button type="button" class="btn btn--ghost btn--sm" data-test="rentmanager">Test connection</button>
+    </header>
+    <p class="card__status" data-status hidden></p>
+
+    <div class="fieldrow">
+      <label class="field">
+        <span class="field__label">Subdomain</span>
+        <input class="input" type="text" name="rm_subdomain" value="<%= settings.rm_subdomain %>"
+               placeholder="mycompany" autocomplete="off" />
+        <span class="field__hint">The <code>mycompany</code> in <code>mycompany.api.rentmanager.com</code></span>
+      </label>
+    </div>
+    <div class="fieldrow">
+      <label class="field">
+        <span class="field__label">Username</span>
+        <input class="input" type="text" name="rm_username" autocomplete="off"
+               placeholder="<%= settings.has_rm_username ? settings.rm_username_masked : 'Not set' %>" />
+      </label>
+      <label class="field">
+        <span class="field__label">Password</span>
+        <input class="input" type="password" name="rm_password" autocomplete="new-password"
+               placeholder="<%= settings.has_rm_password ? settings.rm_password_masked : 'Not set' %>" />
+      </label>
+    </div>
+  </section>
+
+  <!-- Claude API -->
+  <section class="card ledger-rule" data-integration="claude">
+    <header class="card__head">
+      <div class="card__title">
+        <span class="dot" data-dot aria-hidden="true"></span>
+        <h2>Claude API</h2>
+      </div>
+      <button type="button" class="btn btn--ghost btn--sm" data-test="claude">Test connection</button>
+    </header>
+    <p class="card__status" data-status hidden></p>
+
+    <div class="fieldrow">
+      <label class="field">
+        <span class="field__label">API key</span>
+        <input class="input" type="password" name="anthropic_api_key" autocomplete="new-password"
+               placeholder="<%= settings.has_anthropic ? settings.anthropic_masked : 'Not set' %>" />
+        <span class="field__hint">Used for invoice extraction. Falls back to <code>ANTHROPIC_API_KEY</code> if unset.</span>
+      </label>
+    </div>
+  </section>
+
+  <div class="settings__actions">
+    <button type="submit" class="btn btn--primary">Save settings</button>
+  </div>
+</form>
