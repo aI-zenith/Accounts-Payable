@@ -235,6 +235,7 @@ router.post(
       tax: normalizeNumber(b.tax),
       total: normalizeNumber(b.total),
       property_reference: b.property_reference || null,
+      credit_card: b.credit_card || null,
       currency: b.currency || null,
       line_items: lineItems,
     };

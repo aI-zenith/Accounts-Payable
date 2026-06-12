@@ -150,15 +150,29 @@ router.get(
         return { error: err.message, status: err.status ?? null };
       }
     };
+    const schemaOf = (body) => {
+      const arr = Array.isArray(body) ? body : body ? [body] : [];
+      const first = arr[0] ?? null;
+      return {
+        count: Array.isArray(body) ? body.length : undefined,
+        keys: first && typeof first === 'object' ? Object.keys(first) : null,
+        firstRecord: first,
+        error: body && body.error ? body : undefined,
+      };
+    };
 
     const result = {};
 
-    // Slim pick-lists so the pasted JSON stays small and readable.
-    const gl = await get('/GLAccounts?filters=GLAccountType,eq,Expense&pageSize=250');
-    result.expenseGLAccounts = Array.isArray(gl)
-      ? gl.map((a) => ({ id: a.GLAccountID, name: a.Name, ref: a.Reference, isParent: a.IsParent, active: a.IsActive }))
-      : gl;
+    // The two we most need: the create-schema for credit card transactions, and
+    // the list of credit cards to match by name.
+    result.creditCardTransactionSchema = schemaOf(await get('/CreditCardTransactions?pageSize=2'));
+    const cards = await get('/CreditCards?pageSize=100');
+    result.creditCards = Array.isArray(cards)
+      ? cards.map((c) => ({ id: c.CreditCardID ?? c.ID, name: c.Name, keys: undefined }))
+      : cards;
+    result.creditCardSchema = schemaOf(cards);
 
+    // Pick-lists for vendor / property matching.
     const vendors = await get('/Vendors?pageSize=250');
     result.vendors = Array.isArray(vendors)
       ? vendors.map((v) => ({ id: v.VendorID, name: v.Name, active: v.IsActive }))
@@ -170,7 +184,7 @@ router.get(
       : props;
 
     result.counts = {
-      expenseGLAccounts: Array.isArray(result.expenseGLAccounts) ? result.expenseGLAccounts.length : null,
+      creditCards: Array.isArray(result.creditCards) ? result.creditCards.length : null,
       vendors: Array.isArray(result.vendors) ? result.vendors.length : null,
       properties: Array.isArray(result.properties) ? result.properties.length : null,
     };
