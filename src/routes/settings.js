@@ -142,37 +142,38 @@ router.post(
 router.get(
   '/settings/rm-discovery',
   wrap(async (req, res) => {
-    const endpoints = [
-      // Find the bill's child distribution structure (which embed name is valid).
-      '/Bills/1?embeds=Charges',
-      '/Bills/1?embeds=BillCharges',
-      '/Bills/1?embeds=GLTransactions',
-      '/Bills/1?embeds=Account',
-      '/Bills/1?embeds=OpenAmounts',
-      // Expense GL accounts (what AP bills post against).
-      '/GLAccounts?filters=GLAccountType,eq,Expense&pageSize=10',
-      // Confirm vendor + property lookups by name work (for mapping).
-      '/Vendors?filters=Name,contains,Depot&pageSize=5',
-      '/Properties?filters=ShortName,contains,dolphin&pageSize=5',
-      '/Properties?filters=Name,contains,dolphin&pageSize=5',
-    ];
+    const get = async (ep) => {
+      try {
+        const { body } = await request(ep);
+        return body;
+      } catch (err) {
+        return { error: err.message, status: err.status ?? null };
+      }
+    };
 
     const result = {};
-    for (const ep of endpoints) {
-      try {
-        const { status, body } = await request(ep);
-        const arr = Array.isArray(body) ? body : body ? [body] : [];
-        const first = arr[0] ?? null;
-        result[ep] = {
-          status,
-          count: Array.isArray(body) ? body.length : undefined,
-          keys: first && typeof first === 'object' ? Object.keys(first) : null,
-          firstRecord: first,
-        };
-      } catch (err) {
-        result[ep] = { error: err.message, status: err.status ?? null };
-      }
-    }
+
+    // Slim pick-lists so the pasted JSON stays small and readable.
+    const gl = await get('/GLAccounts?filters=GLAccountType,eq,Expense&pageSize=250');
+    result.expenseGLAccounts = Array.isArray(gl)
+      ? gl.map((a) => ({ id: a.GLAccountID, name: a.Name, ref: a.Reference, isParent: a.IsParent, active: a.IsActive }))
+      : gl;
+
+    const vendors = await get('/Vendors?pageSize=250');
+    result.vendors = Array.isArray(vendors)
+      ? vendors.map((v) => ({ id: v.VendorID, name: v.Name, active: v.IsActive }))
+      : vendors;
+
+    const props = await get('/Properties?pageSize=250');
+    result.properties = Array.isArray(props)
+      ? props.map((p) => ({ id: p.PropertyID, name: p.Name, shortName: p.ShortName }))
+      : props;
+
+    result.counts = {
+      expenseGLAccounts: Array.isArray(result.expenseGLAccounts) ? result.expenseGLAccounts.length : null,
+      vendors: Array.isArray(result.vendors) ? result.vendors.length : null,
+      properties: Array.isArray(result.properties) ? result.properties.length : null,
+    };
 
     res.json(result);
   })
