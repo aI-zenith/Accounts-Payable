@@ -65,9 +65,23 @@ async function loadSettingsView() {
   };
 }
 
-// --- GET /settings ---------------------------------------------------------
+// Settings is grouped by module; each module gets its own subpage. Add entries
+// here as modules ship — the sub-nav and routes pick them up automatically.
+const SETTINGS_MODULES = [
+  { key: 'accounts-payable', label: 'Accounts Payable', href: '/settings/accounts-payable', available: true },
+  { key: 'properties', label: 'Properties', available: false },
+  { key: 'residents', label: 'Residents', available: false },
+  { key: 'leasing', label: 'Leasing', available: false },
+  { key: 'maintenance', label: 'Maintenance', available: false },
+  { key: 'reports', label: 'Reports', available: false },
+];
+
+// --- GET /settings : land on the first available module --------------------
+router.get('/settings', (req, res) => res.redirect('/settings/accounts-payable'));
+
+// --- GET /settings/accounts-payable : AP module settings -------------------
 router.get(
-  '/settings',
+  '/settings/accounts-payable',
   wrap(async (req, res) => {
     const settings = await loadSettingsView();
 
@@ -95,8 +109,10 @@ router.get(
     }
 
     res.render('settings', {
-      title: 'Settings',
+      title: 'Settings · Accounts Payable',
       active: 'settings',
+      settingsNav: SETTINGS_MODULES,
+      settingsActive: 'accounts-payable',
       settings,
       cardMappings,
       rmCards,
@@ -115,7 +131,7 @@ router.post(
     const rmCardId = String(req.body.rm_card_id || '').trim();
     const rmCardName = String(req.body.rm_card_name || '').trim() || null;
     if (last4.length !== 4 || !rmCardId) {
-      return res.redirect('/settings?notice=' + encodeURIComponent('Enter the last 4 digits and pick a card.'));
+      return res.redirect('/settings/accounts-payable?notice=' + encodeURIComponent('Enter the last 4 digits and pick a card.'));
     }
     await query(
       `INSERT INTO card_mappings (last4, rm_card_id, rm_card_name)
@@ -123,7 +139,7 @@ router.post(
        ON CONFLICT (last4) DO UPDATE SET rm_card_id = EXCLUDED.rm_card_id, rm_card_name = EXCLUDED.rm_card_name`,
       [last4, rmCardId, rmCardName]
     );
-    res.redirect('/settings?notice=' + encodeURIComponent(`Mapped •••• ${last4} → ${rmCardName || rmCardId}.`));
+    res.redirect('/settings/accounts-payable?notice=' + encodeURIComponent(`Mapped •••• ${last4} → ${rmCardName || rmCardId}.`));
   })
 );
 
@@ -132,7 +148,7 @@ router.post(
   wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (Number.isInteger(id)) await query('DELETE FROM card_mappings WHERE id = $1', [id]);
-    res.redirect('/settings?notice=' + encodeURIComponent('Mapping removed.'));
+    res.redirect('/settings/accounts-payable?notice=' + encodeURIComponent('Mapping removed.'));
   })
 );
 
@@ -142,12 +158,12 @@ router.post(
   wrap(async (req, res) => {
     const id = String(req.body.default_gl_account_id || '').trim();
     const name = String(req.body.default_gl_account_name || '').trim() || null;
-    if (!id) return res.redirect('/settings?notice=' + encodeURIComponent('Choose an expense account.'));
+    if (!id) return res.redirect('/settings/accounts-payable?notice=' + encodeURIComponent('Choose an expense account.'));
     await query(
       'UPDATE settings SET default_gl_account_id = $1, default_gl_account_name = $2, updated_at = now() WHERE id = 1',
       [id, name]
     );
-    res.redirect('/settings?notice=' + encodeURIComponent(`Default expense account set to ${name || id}.`));
+    res.redirect('/settings/accounts-payable?notice=' + encodeURIComponent(`Default expense account set to ${name || id}.`));
   })
 );
 
@@ -194,7 +210,7 @@ router.post(
     // A subdomain/credential change invalidates any cached RM token.
     _resetTokenCache();
 
-    res.redirect('/settings?notice=' + encodeURIComponent('Settings saved.'));
+    res.redirect('/settings/accounts-payable?notice=' + encodeURIComponent('Settings saved.'));
   })
 );
 

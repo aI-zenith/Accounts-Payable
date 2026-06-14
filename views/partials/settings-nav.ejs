@@ -1,0 +1,9 @@
+<nav class="subnav" aria-label="Settings sections">
+  <% settingsNav.forEach((s) => { %>
+    <% if (s.available) { %>
+      <a class="subnav__tab <%= s.key === settingsActive ? 'is-active' : '' %>" href="<%= s.href %>"><%= s.label %></a>
+    <% } else { %>
+      <span class="subnav__tab subnav__tab--soon"><%= s.label %><span class="navlink__soon">soon</span></span>
+    <% } %>
+  <% }) %>
+</nav>
