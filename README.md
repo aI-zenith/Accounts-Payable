@@ -1,13 +1,35 @@
-# Invoice Bridge
+# Zenith Group — Operations Platform
 
-A small, production-ready web app for accounts-payable staff. Bills arrive two
-ways — **emailed to a dedicated inbox** or **uploaded by hand** — and each one is
-read by Claude, mapped to the right records, and posted to Rent Manager as a
-**credit card transaction**.
+The operations platform for Zenith Group property management. It's built as a
+multi-module app (left sidebar) with **Accounts Payable** as the first live
+module; Properties, Residents, Leasing, Maintenance and Reports are scaffolded
+as upcoming modules. Users sign in, and admins manage the team.
+
+**Accounts Payable** ingests bills two ways — **emailed to a dedicated inbox** or
+**uploaded by hand** — reads each with Claude, maps it to the right records, and
+posts it to Rent Manager as a **credit card transaction** with the receipt PDF
+attached.
 
 - **Stack:** Node 20+ / Express, EJS server-rendered views, PostgreSQL (Neon),
   the Claude API for extraction, IMAP for email intake. ES modules throughout.
   Deployable on Render.
+
+## Accounts & sign-in
+
+The app is gated by a login. Authentication is self-contained — no external
+provider:
+
+- **First run:** with no users yet, any visit redirects to **`/setup`** to create
+  the first **administrator** account.
+- **Login/logout:** `/login` issues a database-backed session stored in an
+  httpOnly cookie (passwords hashed with scrypt; sessions in the `sessions`
+  table).
+- **Team management** (admins, under **Team** in the sidebar): add a member with a
+  password, or leave the password blank to generate a **shareable invite link**
+  shown under that user — they open it to set their own password. Roles are
+  `admin` (full access incl. team management) or `member`.
+
+No new secrets are required for auth.
 
 ## How it works
 

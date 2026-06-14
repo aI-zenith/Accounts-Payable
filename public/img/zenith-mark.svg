@@ -1,0 +1,22 @@
+<svg viewBox="0 0 120 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Zenith Group">
+  <defs>
+    <linearGradient id="zgTop" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3a4150"/>
+      <stop offset="1" stop-color="#1b2027"/>
+    </linearGradient>
+    <linearGradient id="zgDiag" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7b8494"/>
+      <stop offset="1" stop-color="#2b313c"/>
+    </linearGradient>
+    <linearGradient id="zgBot" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#1b2027"/>
+      <stop offset="1" stop-color="#3a4150"/>
+    </linearGradient>
+  </defs>
+  <!-- top bar -->
+  <polygon points="6,6 114,20 114,44 6,38" fill="url(#zgTop)"/>
+  <!-- diagonal fold -->
+  <polygon points="92,40 114,44 30,118 8,114" fill="url(#zgDiag)"/>
+  <!-- bottom bar -->
+  <polygon points="6,108 114,122 114,134 6,134" fill="url(#zgBot)"/>
+</svg>

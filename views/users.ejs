@@ -1,0 +1,94 @@
+<section class="page-head">
+  <h1 class="page-title">Team</h1>
+  <p class="page-sub">Invite teammates with a shareable link, or add them with a password. Admins can manage every module.</p>
+</section>
+
+<% if (error) { %><div class="notice notice--err"><%= error %></div><% } %>
+
+<div class="grid-2">
+  <!-- Add a member -->
+  <section class="card">
+    <h2 class="card__h">Add a team member</h2>
+    <form class="stack" method="post" action="/team/add">
+      <label class="field">
+        <span class="field__label">Email</span>
+        <input class="input" type="email" name="email" placeholder="name@zenithgroupmgmt.com" required />
+      </label>
+      <label class="field">
+        <span class="field__label">Name</span>
+        <input class="input" name="name" placeholder="Full name" />
+      </label>
+      <div class="fieldrow">
+        <label class="field">
+          <span class="field__label">Role</span>
+          <select class="input" name="role">
+            <option value="member">Member</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field__label">Password</span>
+          <input class="input" type="text" name="password" autocomplete="off" placeholder="Optional" />
+        </label>
+      </div>
+      <button class="btn btn--primary" type="submit">Add member</button>
+      <p class="hint">Leave the password blank to generate an invite link they can use to set their own.</p>
+    </form>
+  </section>
+
+  <!-- Members -->
+  <section class="card">
+    <h2 class="card__h">Members · <%= users.length %></h2>
+    <ul class="userlist">
+      <% users.forEach((u) => { const isMe = currentUser && currentUser.id === u.id; %>
+        <li class="useritem">
+          <div class="useritem__main">
+            <div class="avatar"><%= (u.name || u.email).trim().slice(0, 1).toUpperCase() %></div>
+            <div>
+              <div class="useritem__name">
+                <%= u.name || u.email %>
+                <% if (isMe) { %><span class="tag">you</span><% } %>
+              </div>
+              <div class="useritem__sub"><%= u.email %></div>
+            </div>
+          </div>
+          <div class="useritem__meta">
+            <span class="pill <%= u.role === 'admin' ? 'pill--pushed' : 'pill--slate' %>"><%= u.role %></span>
+            <% if (u.has_password) { %>
+              <span class="pill pill--ok">active</span>
+            <% } else { %>
+              <span class="pill pill--review">invited</span>
+            <% } %>
+          </div>
+          <div class="useritem__actions">
+            <% if (!isMe) { %>
+              <form method="post" action="/team/<%= u.id %>/delete" onsubmit="return confirm('Remove <%= u.email %> from the team?');">
+                <button class="linkbtn linkbtn--danger" type="submit">Remove</button>
+              </form>
+            <% } %>
+          </div>
+
+          <% if (u.invite_token) { %>
+            <div class="invitebar">
+              <span class="invitebar__label">Invite</span>
+              <input class="input invitebar__url" readonly data-copy
+                     value="<%= origin %>/accept-invite/<%= u.invite_token %>" />
+              <button class="btn btn--ghost btn--sm" type="button" data-copy-btn>Copy</button>
+              <form method="post" action="/team/<%= u.id %>/reinvite">
+                <button class="linkbtn" type="submit">New link</button>
+              </form>
+            </div>
+          <% } else { %>
+            <div class="invitebar invitebar--muted">
+              <span class="invitebar__label">Invite</span>
+              <span class="hint" style="flex:1">Active account — no pending invite.</span>
+              <form method="post" action="/team/<%= u.id %>/reinvite">
+                <button class="linkbtn" type="submit">Create reset link</button>
+              </form>
+            </div>
+          <% } %>
+        </li>
+      <% }) %>
+    </ul>
+  </section>
+</div>

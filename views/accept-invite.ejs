@@ -1,0 +1,21 @@
+<div class="authcard">
+  <div class="authcard__head">
+    <img class="authcard__logo" src="/img/zenith-mark.svg" alt="Zenith Group" />
+    <h1>Set your password</h1>
+    <p>You've been invited to Zenith Group as <strong><%= user.email %></strong>.</p>
+  </div>
+
+  <% if (error) { %><div class="formnote formnote--err"><%= error %></div><% } %>
+
+  <form class="authform" method="post" action="/accept-invite/<%= user.invite_token %>">
+    <label class="field">
+      <span class="field__label">New password</span>
+      <input class="input" type="password" name="password" autocomplete="new-password" minlength="8" required autofocus />
+    </label>
+    <label class="field">
+      <span class="field__label">Confirm password</span>
+      <input class="input" type="password" name="confirm" autocomplete="new-password" minlength="8" required />
+    </label>
+    <button class="btn btn--primary btn--block" type="submit">Set password &amp; sign in</button>
+  </form>
+</div>

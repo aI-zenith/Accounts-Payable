@@ -1,0 +1,29 @@
+<div class="authcard">
+  <div class="authcard__head">
+    <img class="authcard__logo" src="/img/zenith-mark.svg" alt="Zenith Group" />
+    <h1>Welcome to Zenith Group</h1>
+    <p>Create your administrator account to get started.</p>
+  </div>
+
+  <% if (error) { %><div class="formnote formnote--err"><%= error %></div><% } %>
+
+  <form class="authform" method="post" action="/setup">
+    <label class="field">
+      <span class="field__label">Your name</span>
+      <input class="input" name="name" autocomplete="name" autofocus />
+    </label>
+    <label class="field">
+      <span class="field__label">Email</span>
+      <input class="input" type="email" name="email" autocomplete="username" required />
+    </label>
+    <label class="field">
+      <span class="field__label">Password</span>
+      <input class="input" type="password" name="password" autocomplete="new-password" minlength="8" required />
+    </label>
+    <label class="field">
+      <span class="field__label">Confirm password</span>
+      <input class="input" type="password" name="confirm" autocomplete="new-password" minlength="8" required />
+    </label>
+    <button class="btn btn--primary btn--block" type="submit">Create account</button>
+  </form>
+</div>

@@ -101,6 +101,33 @@ const STATEMENTS = [
    )`,
 
   `CREATE INDEX IF NOT EXISTS statement_charges_statement_idx ON statement_charges (statement_id)`,
+
+  // --- Platform: users + sessions -----------------------------------------
+  // The app is the Zenith Group operations platform; Accounts Payable is the
+  // first module. Users sign in; admins can invite teammates (an invite link is
+  // shown per pending user) or create them with a password directly.
+  `CREATE TABLE IF NOT EXISTS users (
+     id                serial PRIMARY KEY,
+     email             text UNIQUE NOT NULL,
+     name              text,
+     role              text NOT NULL DEFAULT 'member',
+     password_hash     text,
+     invite_token      text UNIQUE,
+     invite_created_at timestamptz,
+     is_active         boolean NOT NULL DEFAULT true,
+     last_login_at     timestamptz,
+     created_at        timestamptz DEFAULT now(),
+     updated_at        timestamptz DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS users_email_idx ON users (lower(email))`,
+
+  `CREATE TABLE IF NOT EXISTS sessions (
+     token      text PRIMARY KEY,
+     user_id    int NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     created_at timestamptz DEFAULT now(),
+     expires_at timestamptz NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id)`,
 ];
 
 export async function runMigrations() {
