@@ -20,6 +20,10 @@
   const linkedRec = task.link_name ? (task.link_type.charAt(0).toUpperCase() + task.link_type.slice(1) + ' · ' + task.link_name) : '—';
   const tags = Array.isArray(task.tags) ? task.tags : [];
   const watchers = task.watchers || [];
+  // Inbox uses a Conversation-first layout (no Overview tab); the Table/Board
+  // panel leads with an Overview tab.
+  const showOverview = typeof withOverview === 'undefined' ? true : withOverview;
+  const commentsLabel = showOverview ? 'Comments' : 'Conversation';
 %>
 <div class="tkd-head">
   <div class="tkd-crumb">
@@ -27,6 +31,7 @@
     <% if (task.category) { %><span class="tkd-cat"><%= task.category %></span><% } %>
     <div style="flex:1"></div>
     <a class="btng" href="/tasks/<%= task.id %>/edit"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-right:5px"><path d="M11 2.5l2.5 2.5M3 11l8-8 2.5 2.5-8 8H3z" stroke-linejoin="round"/></svg>Edit</a>
+    <form method="post" action="/tasks/<%= task.id %>/status" class="inline"><input type="hidden" name="status" value="<%= task.status === 'done' ? 'open' : 'done' %>" /><input type="hidden" name="back" value="<%= back %>" /><button class="btnp" type="submit" style="padding:8px 14px"><% if (task.status === 'done') { %>↺ Reopen<% } else { %><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px"><path d="M3.5 8.5l3 3 6-7" stroke-linecap="round" stroke-linejoin="round"/></svg>Mark done<% } %></button></form>
     <details class="tkd-more">
       <summary class="tkd-morebtn" title="More">···</summary>
       <div class="tkmenu" style="right:0;top:38px;left:auto">
@@ -47,15 +52,19 @@
         <% Object.entries(STAT).forEach(([k, v]) => { %><option value="<%= k %>" <%= task.status === k ? 'selected' : '' %>><%= v %></option><% }) %>
       </select>
     </form>
-    <span class="tpr tpr-<%= task.priority %>"><%= PRIO[task.priority] %> priority</span>
+    <span class="tpr tpr-<%= task.priority %>"><%= PRIO[task.priority] %><%= showOverview ? ' priority' : '' %></span>
     <span class="tdue <%= du.cls %>">Due <%= du.label %></span>
+    <% if (!showOverview) { (task.assignees || []).slice(0, 3).forEach((a) => { %>
+      <span class="tkd-person tkd-person--w"><span class="av" style="width:22px;height:22px;background:<%= avc(a.name) %>;font-size:9.5px"><%= initials(a.name) %></span><%= a.name %></span>
+    <% }) } %>
   </div>
 </div>
 
 <div class="tkd-tabs">
-  <a class="tkd-tab <%= tab === 'overview' ? 'on' : '' %>" href="<%= tabUrl('overview') %>">Overview</a>
+  <% if (showOverview) { %><a class="tkd-tab <%= tab === 'overview' ? 'on' : '' %>" href="<%= tabUrl('overview') %>">Overview</a><% } %>
+  <% if (!showOverview) { %><a class="tkd-tab <%= tab === 'comments' || tab === 'conversation' ? 'on' : '' %>" href="<%= tabUrl('comments') %>"><%= commentsLabel %><% if (task.comments.length) { %><b><%= task.comments.length %></b><% } %></a><% } %>
   <a class="tkd-tab <%= tab === 'checklist' ? 'on' : '' %>" href="<%= tabUrl('checklist') %>">Checklist<% if (task.subtasks.length) { %><b><%= subDone %>/<%= task.subtasks.length %></b><% } %></a>
-  <a class="tkd-tab <%= tab === 'comments' || tab === 'conversation' ? 'on' : '' %>" href="<%= tabUrl('comments') %>">Comments<% if (task.comments.length) { %><b><%= task.comments.length %></b><% } %></a>
+  <% if (showOverview) { %><a class="tkd-tab <%= tab === 'comments' || tab === 'conversation' ? 'on' : '' %>" href="<%= tabUrl('comments') %>"><%= commentsLabel %><% if (task.comments.length) { %><b><%= task.comments.length %></b><% } %></a><% } %>
   <a class="tkd-tab <%= tab === 'files' ? 'on' : '' %>" href="<%= tabUrl('files') %>">Files<% if (task.attachments.length) { %><b><%= task.attachments.length %></b><% } %></a>
   <a class="tkd-tab <%= tab === 'activity' ? 'on' : '' %>" href="<%= tabUrl('activity') %>">Activity</a>
 </div>
@@ -127,6 +136,7 @@
     </div>
 
   <% } else if (tab === 'comments' || tab === 'conversation') { %>
+    <% if (!showOverview && task.description) { %><div class="tkd-desc"><%= task.description %></div><% } %>
     <div class="tkd-thread">
       <% task.comments.forEach((c) => { const mine = c.user_id === currentUser.id; const who = c.name || c.email || 'Someone'; const body = esc(c.body).replace(/@([A-Za-z][\w-]*)/g, '<b class="men">@$1</b>'); %>
         <div class="tkmsg <%= mine ? 'me' : '' %>">

@@ -6,7 +6,7 @@
   const avc = (n) => { let h = 0; for (const ch of String(n || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return AVC[h % AVC.length]; };
   const fmtD = (d) => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric' }) : '';
   const dueLabel = (t) => { if (!t.due_at) return { t: '', c: '#8a909c' }; const ms = new Date(t.due_at) - Date.now(); if (t.status !== 'done' && ms < 0) return { t: 'Overdue', c: '#c0392b' }; if (ms < 86400000) return { t: 'Today', c: '#c0392b' }; if (ms < 3 * 86400000) return { t: fmtD(t.due_at), c: '#9a6b12' }; return { t: fmtD(t.due_at), c: '#5b6472' }; };
-  const rowUrl = (id) => '/tasks?sel=' + id + (seg !== 'all' ? '&seg=' + seg : '') + (q ? '&q=' + encodeURIComponent(q) : '') + '&tab=overview';
+  const rowUrl = (id) => '/tasks?sel=' + id + (seg !== 'all' ? '&seg=' + seg : '') + (q ? '&q=' + encodeURIComponent(q) : '') + '&tab=comments';
   const groupDefs = [['overdue', 'Overdue', '#c0392b'], ['today', 'Today', '#9a6b12'], ['upcoming', 'Upcoming', '#5b6472'], ['completed', 'Completed', '#2f9e6e']];
 %>
 
@@ -65,7 +65,7 @@
 
     <div class="tkin-detail" data-detail-pane>
       <% if (task) { %>
-        <%- include('../partials/task-detail', { task, tab, currentUser }) %>
+        <%- include('../partials/task-detail', { task, tab, currentUser, withOverview: false }) %>
       <% } else { %>
         <div class="tkd-empty">Select a task to see the conversation.</div>
       <% } %>
