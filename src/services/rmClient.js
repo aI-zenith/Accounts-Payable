@@ -386,10 +386,13 @@ export async function attachReceipt(transactionId, fileBuffer, filename) {
   const dot = name.lastIndexOf('.');
   const ext = (dot >= 0 ? name.slice(dot + 1) : 'pdf').toLowerCase();
 
+  // The /CreditCardTransactions/{id}/Attachments URL already scopes the parent,
+  // so EntityType/EntityKeyID are omitted — sending EntityType "CreditCardTransaction"
+  // (not a valid eFileAttachmentRelatedObjectTypes enum value) is what produced
+  // the "issue retrieving data from the database" 500 in both the bare-object and
+  // array attempts.
   const payload = [
     {
-      EntityType: 'CreditCardTransaction',
-      EntityKeyID: Number(transactionId),
       Description: name,
       File: {
         Name: name,

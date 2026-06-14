@@ -278,6 +278,37 @@ router.get(
   wrap(async (req, res) => {
     const out = {};
 
+    // 0) Read RM's own Help doc for THIS subresource via the authenticated
+    //    client (it 403s unauthenticated). The ASP.NET Web API Help page server-
+    //    renders the request model + a JSON sample; strip tags so the field
+    //    names + sample are readable.
+    const stripTags = (html) =>
+      String(html)
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ')
+        .trim();
+    for (const helpUrl of [
+      '/Help/Subresource/CreditCardTransactions/Attachments',
+      '/Help/ResourceModel?modelName=FileAttachment',
+      '/Help/ResourceModel?modelName=File',
+    ]) {
+      try {
+        const r = await request(helpUrl);
+        const text = typeof r.body === 'string' ? r.body : JSON.stringify(r.body);
+        out[`help:${helpUrl}`] = { status: r.status, text: stripTags(text).slice(0, 8000) };
+      } catch (err) {
+        out[`help:${helpUrl}`] = { error: err.message, status: err.status ?? null };
+      }
+    }
+
     // 1) Hunt for an existing attachment to copy its structure exactly.
     try {
       const samples = [];
