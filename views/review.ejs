@@ -75,6 +75,24 @@
         </label>
       </div>
 
+      <div class="fieldrow">
+        <label class="field">
+          <span class="field__label">Expense account <span class="field__hint" style="text-transform:none;font-weight:400;">(start typing to search)</span></span>
+          <input class="input" type="text" name="expense_account" id="expenseAccountInput"
+                 list="glAccountsList" value="<%= v(defaultGlName) %>" placeholder="Maintenance Material" autocomplete="off" />
+          <input type="hidden" name="expense_account_id" id="expenseAccountId" value="<%= v(defaultGlId) %>" />
+          <datalist id="glAccountsList">
+            <% (glAccounts || []).forEach((a) => { %>
+              <option value="<%= a.name %>"><%= a.ref ? a.ref : '' %></option>
+            <% }) %>
+          </datalist>
+          <% if (!glAccounts || !glAccounts.length) { %>
+            <span class="field__hint">Couldn't load accounts from Rent Manager — the default will be used.</span>
+          <% } %>
+        </label>
+      </div>
+      <script id="glMapData" type="application/json"><%- JSON.stringify(glMap || {}) %></script>
+
       <fieldset class="lineitems">
         <legend>Line items</legend>
         <table class="mini" id="lineItems">

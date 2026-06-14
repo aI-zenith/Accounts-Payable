@@ -65,6 +65,24 @@
     }
   });
 
+  // ---- review: expense-account type-to-search -> resolve to GL account id ----
+  const eaInput = document.getElementById('expenseAccountInput');
+  const eaId = document.getElementById('expenseAccountId');
+  const glMapEl = document.getElementById('glMapData');
+  if (eaInput && eaId && glMapEl) {
+    let map = {};
+    try { map = JSON.parse(glMapEl.textContent || '{}'); } catch (e) { map = {}; }
+    const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const sync = () => {
+      const id = map[norm(eaInput.value)];
+      // Keep the prior id if the current text isn't an exact account name yet.
+      if (id) eaId.value = id;
+      else if (!eaInput.value) eaId.value = '';
+    };
+    eaInput.addEventListener('input', sync);
+    eaInput.addEventListener('change', sync);
+  }
+
   // ---- review: auto-refresh while extracting ----
   const poller = document.querySelector('[data-poll]');
   if (poller && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {

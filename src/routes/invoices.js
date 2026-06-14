@@ -10,6 +10,7 @@ import {
   createVendor,
   findPropertyByName,
   createCreditCardTransaction,
+  listExpenseGLAccounts,
 } from '../services/rmClient.js';
 
 const router = Router();
@@ -205,11 +206,44 @@ router.get(
   '/invoice/:id',
   loadInvoice,
   wrap(async (req, res) => {
+    const d = req.invoice.extracted || {};
+
+    // Expense accounts for the type-to-search picker (best-effort).
+    let glAccounts = [];
+    try {
+      glAccounts = (await listExpenseGLAccounts()).map((a) => ({
+        id: String(a.GLAccountID),
+        name: a.Name,
+        ref: a.Reference,
+      }));
+    } catch {
+      glAccounts = [];
+    }
+    const glMap = {};
+    for (const a of glAccounts) glMap[a.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()] = a.id;
+
+    // Default selection: the AI suggestion, else the configured default.
+    let defaultGlId = d.expense_account_id || '';
+    let defaultGlName = d.expense_account_name || d.expense_account || '';
+    if (!defaultGlId) {
+      const { rows } = await query(
+        'SELECT default_gl_account_id, default_gl_account_name FROM settings WHERE id = 1'
+      );
+      if (rows[0]) {
+        defaultGlId = rows[0].default_gl_account_id || '';
+        defaultGlName = defaultGlName || rows[0].default_gl_account_name || '';
+      }
+    }
+
     res.render('review', {
       title: `Review · ${req.invoice.original_name}`,
       active: 'dashboard',
       invoice: req.invoice,
-      data: req.invoice.extracted || {},
+      data: d,
+      glAccounts,
+      glMap,
+      defaultGlId,
+      defaultGlName,
       notice: req.query.notice || null,
     });
   })
@@ -249,6 +283,9 @@ router.post(
       property_reference: b.property_reference || null,
       credit_card: b.credit_card || null,
       card_last4: b.card_last4 ? String(b.card_last4).replace(/\D/g, '').slice(-4) : null,
+      expense_account: b.expense_account || null,
+      expense_account_id: b.expense_account_id || null,
+      expense_account_name: b.expense_account || null,
       currency: b.currency || null,
       line_items: lineItems,
     };
@@ -366,9 +403,13 @@ async function pushInvoice(inv) {
       return { ok: false, status: 'needs_review', message: msg };
     }
 
-    // 4) Expense (GL) account — required by Rent Manager on the allocation line.
-    const { rows: sRows } = await query('SELECT default_gl_account_id FROM settings WHERE id = 1');
-    const glAccountId = sRows[0] && sRows[0].default_gl_account_id;
+    // 4) Expense (GL) account — required by RM. Prefer the per-receipt choice,
+    //    then the configured default.
+    let glAccountId = d.expense_account_id || null;
+    if (!glAccountId) {
+      const { rows: sRows } = await query('SELECT default_gl_account_id FROM settings WHERE id = 1');
+      glAccountId = sRows[0] && sRows[0].default_gl_account_id;
+    }
     if (!glAccountId) {
       const msg = 'Needs review: choose a default expense account in Settings (Rent Manager requires a GL account).';
       await setStatus('needs_review', msg);
