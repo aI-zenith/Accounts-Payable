@@ -20,7 +20,9 @@ export async function polish(text, mode, context = 'task description') {
   try {
     const { anthropic } = await getCredentials();
     if (!anthropic.apiKey) return base;
-    const client = new Anthropic({ apiKey: anthropic.apiKey });
+    // Bound the call: never let a slow/blocked network hang the request. The
+    // SDK default timeout is 10 minutes, which would leave the UI spinner stuck.
+    const client = new Anthropic({ apiKey: anthropic.apiKey, timeout: 15000, maxRetries: 1 });
     const msg = await client.messages.create({
       model: 'claude-opus-4-8',
       max_tokens: 1024,
