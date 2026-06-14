@@ -20,6 +20,7 @@
     "imapflow": "^1.4.0",
     "mailparser": "^3.9.9",
     "multer": "^2.0.1",
+    "nodemailer": "^9.0.0",
     "pg": "^8.13.1"
   }
 }

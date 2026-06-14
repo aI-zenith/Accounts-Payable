@@ -10,6 +10,38 @@
   </div>
 </section>
 
+<% if (typeof tasks !== 'undefined' && tasks) {
+  const fmtDueShort = (d) => { if (!d) return ''; const dt = new Date(d); return dt.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+  const overdue = (t) => t.due_at && new Date(t.due_at) < new Date() && (t.status === 'open' || t.status === 'in_progress');
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const taskRow = (t) => `<li class="taskrow ${overdue(t) ? 'is-overdue' : ''}"><a href="/tasks/${t.id}">${esc(t.title)}</a><span class="taskrow__meta"><span class="pill prio-${t.priority}">${t.priority}</span>${t.due_at ? `<span class="${overdue(t) ? 'overdue-text' : ''}">${fmtDueShort(t.due_at)}</span>` : ''}</span></li>`;
+%>
+<section class="statcards">
+  <a class="statcard" href="/tasks?openOnly=1"><span class="statcard__n"><%= tasks.counts.open + tasks.counts.in_progress %></span><span class="statcard__l">Open tasks</span></a>
+  <a class="statcard statcard--warn" href="/tasks?openOnly=1&sort=due_at"><span class="statcard__n"><%= tasks.counts.overdue %></span><span class="statcard__l">Overdue</span></a>
+  <a class="statcard" href="/tasks"><span class="statcard__n"><%= tasks.due.length %></span><span class="statcard__l">Due ≤ 7 days</span></a>
+  <a class="statcard" href="/tasks?status=completed"><span class="statcard__n"><%= tasks.counts.completed %></span><span class="statcard__l">Completed</span></a>
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <h2 class="card__h">My tasks</h2>
+    <% if (tasks.mine.length) { %>
+      <ul class="tasklist-mini"><% tasks.mine.forEach((t)=>{ %><%- taskRow(t) %><% }) %></ul>
+    <% } else { %><p class="hint">Nothing assigned to you right now.</p><% } %>
+    <a class="linkbtn" href="/tasks">All tasks →</a>
+  </section>
+  <section class="card">
+    <h2 class="card__h">Due in the next 7 days</h2>
+    <% if (tasks.due.length) { %>
+      <ul class="tasklist-mini"><% tasks.due.forEach((t)=>{ %><%- taskRow(t) %><% }) %></ul>
+    <% } else { %><p class="hint">Nothing due in the next 7 days.</p><% } %>
+    <a class="linkbtn" href="/tasks/board">Open the board →</a>
+  </section>
+</div>
+
+<% } %>
+
 <section class="moneyline">
   <div class="mm" aria-hidden="true">
     <div class="mm__press">

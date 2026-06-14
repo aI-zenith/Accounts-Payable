@@ -10,9 +10,13 @@ import settingsRoutes from './routes/settings.js';
 import reconcileRoutes from './routes/reconcile.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
+import taskRoutes from './routes/tasks.js';
+import reminderRoutes from './routes/reminders.js';
 import { parseCookies, attachUser, requireAuth, requirePermission } from './middleware/auth.js';
+import { dueScreenReminders, markRemindersShown } from './services/reminders.js';
 import { warmToken } from './services/rmClient.js';
 import { startEmailPoller } from './services/emailPoller.js';
+import { startReminderScheduler } from './services/reminderScheduler.js';
 import { runMigrations } from './db/migrate.js';
 
 // Platform branding (Accounts Payable is the first module of the Zenith Group
@@ -54,6 +58,22 @@ app.use((req, res, next) => {
   next();
 });
 
+// On-screen reminders: surface a signed-in user's due reminders once per day
+// (the banner is rendered, then marked shown so it doesn't repeat).
+app.use((req, res, next) => {
+  res.locals.screenReminders = [];
+  if (!req.user || req.method !== 'GET' || !req.accepts('html')) return next();
+  dueScreenReminders(req.user.id)
+    .then((due) => {
+      if (due.length) {
+        res.locals.screenReminders = due;
+        markRemindersShown(due.map((r) => r.id));
+      }
+      next();
+    })
+    .catch(() => next());
+});
+
 // Public auth routes (login / setup / accept-invite / logout).
 app.use('/', authRoutes);
 
@@ -75,6 +95,12 @@ app.use('/settings', requirePermission('settings'));
 app.use('/', settingsRoutes);
 
 app.use('/team', requirePermission('team'), userRoutes);
+
+// Tasks module (Staff see their own; Manager/Admin see all — enforced in the
+// service layer). Reminders live under the same permission.
+app.use(['/tasks', '/reminders'], requirePermission('tasks'));
+app.use('/tasks', taskRoutes);
+app.use('/reminders', reminderRoutes);
 
 // 404.
 app.use((req, res) => {
@@ -115,6 +141,8 @@ app.listen(PORT, () => {
   warmToken();
   // Start polling the configured inbox for emailed bills (no-op until configured).
   startEmailPoller();
+  // Deliver due reminder emails on a schedule (no-op unless SMTP is configured).
+  startReminderScheduler();
 });
 
 export default app;

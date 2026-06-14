@@ -4,6 +4,8 @@ import { query } from '../db/pool.js';
 // every signed-in user and is intentionally not listed here. Add a key when a
 // module ships and it becomes gateable.
 export const PERMISSIONS = [
+  { key: 'tasks', label: 'Tasks (own)' },
+  { key: 'tasks_all', label: 'Tasks — see all & assign' },
   { key: 'accounts_payable', label: 'Accounts Payable' },
   { key: 'properties', label: 'Properties' },
   { key: 'residents', label: 'Residents' },

@@ -1,0 +1,105 @@
+<%
+  const PRIO = { low: 'Low', normal: 'Normal', high: 'High', urgent: 'Urgent' };
+  const STAT = { open: 'Open', in_progress: 'In Progress', completed: 'Completed', cancelled: 'Cancelled' };
+  const fmtDue = (d) => { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+  const isOverdue = (t) => t.due_at && new Date(t.due_at) < new Date() && (t.status === 'open' || t.status === 'in_progress');
+  const sortLink = (col) => { const dir = (filters.sort === col && filters.dir === 'asc') ? 'desc' : 'asc'; const p = new URLSearchParams(qs); p.set('sort', col); p.set('dir', dir); return '/tasks?' + p.toString(); };
+%>
+
+<section class="page-head page-head--row">
+  <div>
+    <h1 class="page-title">Tasks</h1>
+    <p class="page-sub">Internal task management for the team.</p>
+  </div>
+  <a class="btn btn--primary" href="/tasks/new">New task</a>
+</section>
+
+<%- include('../partials/task-nav') %>
+
+<form class="taskfilters" method="get" action="/tasks">
+  <input class="input" type="search" name="q" value="<%= filters.q %>" placeholder="Search title or description" />
+  <select class="input" name="status"><option value="">Any status</option><% Object.entries(STAT).forEach(([k,v])=>{ %><option value="<%= k %>" <%= filters.status===k?'selected':'' %>><%= v %></option><% }) %></select>
+  <select class="input" name="priority"><option value="">Any priority</option><% Object.entries(PRIO).forEach(([k,v])=>{ %><option value="<%= k %>" <%= filters.priority===k?'selected':'' %>><%= v %></option><% }) %></select>
+  <select class="input" name="category"><option value="">Any category</option><% categories.forEach((c)=>{ %><option value="<%= c.name %>" <%= filters.category===c.name?'selected':'' %>><%= c.name %></option><% }) %></select>
+  <select class="input" name="assignee"><option value="">Any assignee</option><% users.forEach((u)=>{ %><option value="<%= u.id %>" <%= String(filters.assignee)===String(u.id)?'selected':'' %>><%= u.name || u.email %></option><% }) %></select>
+  <label class="chk"><input type="checkbox" name="openOnly" <%= filters.openOnly?'checked':'' %> /> Open only</label>
+  <label class="chk"><input type="checkbox" name="hasTenant" <%= filters.hasTenant?'checked':'' %> /> Has tenant</label>
+  <button class="btn btn--ghost btn--sm" type="submit">Apply</button>
+  <a class="btn btn--ghost btn--sm" href="/tasks">Reset</a>
+</form>
+
+<div class="taskbar">
+  <div class="taskbar__left">
+    <% if (saved.length) { %>
+      <span class="hint">Saved:</span>
+      <% saved.forEach((s)=>{ const p=new URLSearchParams(s.query||{}); %>
+        <a class="chip" href="/tasks?<%= p.toString() %>"><%= s.name %></a>
+      <% }) %>
+    <% } %>
+    <form method="post" action="/tasks/filters" class="savefilter">
+      <% Object.entries(filters).forEach(([k,v])=>{ if(v&&v!==false){ %><input type="hidden" name="<%= k %>" value="<%= v===true?'1':v %>" /><% } }) %>
+      <input class="input input--mini" name="name" placeholder="Name this filter" />
+      <button class="linkbtn" type="submit">Save filter</button>
+    </form>
+  </div>
+  <div class="taskbar__right">
+    <details class="menu">
+      <summary class="btn btn--ghost btn--sm">Columns</summary>
+      <div class="menu__pop">
+        <% ['category','priority','due','assignees','linked'].forEach((c)=>{ %>
+          <label class="chk"><input type="checkbox" data-col="<%= c %>" checked /> <%= c %></label>
+        <% }) %>
+      </div>
+    </details>
+    <a class="btn btn--ghost btn--sm" href="/tasks/export.csv?<%= qs %>">Export CSV</a>
+  </div>
+</div>
+
+<% if (!tasks.length) { %>
+  <div class="empty"><p class="empty__title">No tasks</p><p class="empty__body">Create one with “New task”, or adjust your filters.</p></div>
+<% } else { %>
+<form id="bulkForm" method="post" action="/tasks/bulk">
+  <div class="bulkbar" id="bulkbar" hidden>
+    <span><span id="bulkCount">0</span> selected</span>
+    <select class="input input--mini" name="status"><option value="">Set status…</option><% Object.entries(STAT).forEach(([k,v])=>{ %><option value="<%= k %>"><%= v %></option><% }) %></select>
+    <select class="input input--mini" name="priority"><option value="">Set priority…</option><% Object.entries(PRIO).forEach(([k,v])=>{ %><option value="<%= k %>"><%= v %></option><% }) %></select>
+    <select class="input input--mini" name="assignee"><option value="">Assign to…</option><% users.forEach((u)=>{ %><option value="<%= u.id %>"><%= u.name||u.email %></option><% }) %></select>
+    <button class="btn btn--primary btn--sm" type="submit">Apply</button>
+  </div>
+
+  <div class="ledger-wrap">
+    <table class="ledger tasktable">
+      <thead>
+        <tr>
+          <th class="chkcol"><input type="checkbox" id="checkAll" /></th>
+          <th><a href="<%= sortLink('title') %>">Title</a></th>
+          <th data-col="category"><a href="<%= sortLink('status') %>">Category</a></th>
+          <th data-col="priority"><a href="<%= sortLink('priority') %>">Priority</a></th>
+          <th><a href="<%= sortLink('status') %>">Status</a></th>
+          <th data-col="due"><a href="<%= sortLink('due_at') %>">Due</a></th>
+          <th data-col="assignees">Assignees</th>
+          <th data-col="linked">Linked</th>
+          <th class="actions-col"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% tasks.forEach((t)=>{ %>
+          <tr class="<%= isOverdue(t) ? 'is-overdue' : '' %>">
+            <td class="chkcol"><input type="checkbox" name="ids" value="<%= t.id %>" class="rowchk" /></td>
+            <td><a class="cell-primary" href="/tasks/<%= t.id %>"><%= t.title %></a></td>
+            <td data-col="category"><%= t.category || '—' %></td>
+            <td data-col="priority"><span class="pill prio-<%= t.priority %>"><%= PRIO[t.priority] %></span></td>
+            <td><span class="pill stat-<%= t.status %>"><%= STAT[t.status] %></span></td>
+            <td data-col="due" class="<%= isOverdue(t) ? 'overdue-text' : '' %>"><%= fmtDue(t.due_at) %><% if (isOverdue(t)) { %> <span class="tag tag--over">overdue</span><% } %></td>
+            <td data-col="assignees"><%= t.assignees.map((a)=>a.name).join(', ') || '—' %></td>
+            <td data-col="linked"><% if (t.link_name) { %><span class="tag"><%= t.link_type %></span> <%= t.link_name %><% } else { %>—<% } %></td>
+            <td class="actions-col">
+              <form method="post" action="/tasks/<%= t.id %>/snooze" class="inline"><input type="hidden" name="back" value="/tasks" /><button class="linkbtn" title="Snooze 7 days">Snooze</button></form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</form>
+<% } %>

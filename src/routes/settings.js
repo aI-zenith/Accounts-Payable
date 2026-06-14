@@ -69,6 +69,7 @@ async function loadSettingsView() {
 // here as modules ship — the sub-nav and routes pick them up automatically.
 const SETTINGS_MODULES = [
   { key: 'accounts-payable', label: 'Accounts Payable', href: '/settings/accounts-payable', available: true },
+  { key: 'tasks', label: 'Tasks', href: '/settings/tasks', available: true },
   { key: 'properties', label: 'Properties', available: false },
   { key: 'residents', label: 'Residents', available: false },
   { key: 'leasing', label: 'Leasing', available: false },
@@ -120,6 +121,46 @@ router.get(
       glAccounts,
       notice: req.query.notice || null,
     });
+  })
+);
+
+// --- GET /settings/tasks : task categories + notifications -----------------
+router.get(
+  '/settings/tasks',
+  wrap(async (req, res) => {
+    const { rows: categories } = await query(
+      'SELECT * FROM task_categories ORDER BY sort, lower(name)'
+    );
+    res.render('settings-tasks', {
+      title: 'Settings · Tasks',
+      active: 'settings',
+      settingsNav: SETTINGS_MODULES,
+      settingsActive: 'tasks',
+      categories,
+      mailerOn: Boolean(process.env.SMTP_HOST),
+      notice: req.query.notice || null,
+    });
+  })
+);
+router.post(
+  '/settings/tasks/categories',
+  wrap(async (req, res) => {
+    const name = String(req.body.name || '').trim();
+    if (name) {
+      await query(
+        'INSERT INTO task_categories (name, sort) VALUES ($1, 50) ON CONFLICT (name) DO UPDATE SET is_active = true',
+        [name]
+      );
+    }
+    res.redirect('/settings/tasks?notice=' + encodeURIComponent('Category saved.'));
+  })
+);
+router.post(
+  '/settings/tasks/categories/:id/delete',
+  wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isInteger(id)) await query('UPDATE task_categories SET is_active = false WHERE id = $1', [id]);
+    res.redirect('/settings/tasks?notice=' + encodeURIComponent('Category removed.'));
   })
 );
 

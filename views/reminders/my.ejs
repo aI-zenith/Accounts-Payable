@@ -1,0 +1,51 @@
+<%
+  const fmt = (d) => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+%>
+
+<section class="page-head">
+  <h1 class="page-title">My Reminders</h1>
+  <p class="page-sub">Personal reminders you set on tasks. Only you can see these.</p>
+</section>
+
+<%- include('../partials/task-nav') %>
+
+<nav class="subnav subnav--filter" aria-label="Filter reminders">
+  <a class="subnav__tab <%= filter==='open'?'is-active':'' %>" href="/reminders?filter=open">Open</a>
+  <a class="subnav__tab <%= filter==='done'?'is-active':'' %>" href="/reminders?filter=done">Done</a>
+  <a class="subnav__tab <%= filter==='all'?'is-active':'' %>" href="/reminders?filter=all">All</a>
+</nav>
+
+<% if (!reminders.length) { %>
+  <div class="empty"><p class="empty__title">No reminders</p><p class="empty__body">Open a task and choose “Add a reminder”.</p></div>
+<% } else { %>
+  <ul class="remlist">
+    <% reminders.forEach((r)=>{ %>
+      <li class="remitem <%= r.overdue ? 'is-overdue' : '' %>">
+        <div class="remitem__main">
+          <div class="remitem__title">
+            <%= r.title %>
+            <% if (r.recurrence==='daily') { %><span class="tag">daily</span><% } %>
+            <% if (r.overdue) { %><span class="tag tag--over">overdue</span><% } %>
+            <% if (r.status==='done') { %><span class="tag tag--done">done</span><% } %>
+          </div>
+          <div class="remitem__meta">
+            <%= fmt(r.remind_at) %>
+            <% if (r.task_title) { %> · <a href="/tasks/<%= r.task_id %>"><%= r.task_title %></a><% } %>
+            <% if (r.note) { %> · <span class="hint"><%= r.note %></span><% } %>
+          </div>
+          <div class="remitem__via">
+            <% if (r.via_screen) { %><span class="chip">on-screen</span><% } %>
+            <% if (r.via_email) { %><span class="chip">email</span><% } %>
+            <% if (r.via_daily_email) { %><span class="chip">daily email</span><% } %>
+          </div>
+        </div>
+        <div class="remitem__actions">
+          <% if (r.status !== 'done') { %>
+            <form method="post" action="/reminders/<%= r.id %>/done" class="inline"><input type="hidden" name="filter" value="<%= filter %>" /><button class="btn btn--ghost btn--sm" type="submit">Mark done</button></form>
+          <% } %>
+          <form method="post" action="/reminders/<%= r.id %>/delete" class="inline" onsubmit="return confirm('Delete this reminder?');"><button class="linkbtn linkbtn--danger" type="submit">Delete</button></form>
+        </div>
+      </li>
+    <% }) %>
+  </ul>
+<% } %>

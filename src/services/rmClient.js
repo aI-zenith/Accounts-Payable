@@ -538,6 +538,32 @@ export async function getTransactionAttachments(transactionId) {
   }
 }
 
+// Search Rent Manager entities for linking to a task. Best-effort: returns
+// [{ id, name }]. Endpoint/field names may need confirming per account.
+const ENTITY_MAP = {
+  tenant: { path: '/Tenants?pageSize=1000', id: ['TenantID', 'ID'], name: ['Name'] },
+  owner: { path: '/Owners?pageSize=1000', id: ['OwnerID', 'ID'], name: ['Name'] },
+  prospect: { path: '/Prospects?pageSize=1000', id: ['ProspectID', 'ID'], name: ['Name'] },
+  vendor: { path: '/Vendors?pageSize=1000', id: ['VendorID', 'ID'], name: ['Name', 'Payee'] },
+};
+
+export async function searchRmEntities(type, q) {
+  const cfg = ENTITY_MAP[type];
+  if (!cfg) return [];
+  const items = await listAll(cfg.path);
+  const needle = String(q || '').toLowerCase();
+  const out = [];
+  for (const it of items) {
+    const name = cfg.name.map((k) => it[k]).find(Boolean);
+    if (!name) continue;
+    if (needle && !String(name).toLowerCase().includes(needle)) continue;
+    const id = cfg.id.map((k) => it[k]).find((v) => v != null);
+    out.push({ id: String(id ?? ''), name: String(name) });
+    if (out.length >= 25) break;
+  }
+  return out;
+}
+
 // Test-only helper used by the Settings connection test.
 export async function testAuthentication() {
   const token = await authenticate();
