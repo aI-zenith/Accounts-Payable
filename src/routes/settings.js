@@ -358,15 +358,45 @@ router.get(
       const file = { Name: fname, Extension: 'pdf', Content: content };
       const url = `/CreditCardTransactions/${txn}/Attachments`;
 
+      // A MySqlException (DB-level) most often means a required FK is missing —
+      // RM files hang off a FileType. Pull the account's FileTypes so we can send
+      // a valid one and surface the list either way.
+      const normList = (b) => (Array.isArray(b) ? b : b ? [b] : []);
+      let fileTypes = [];
+      for (const ep of ['/FileTypes?pageSize=200', '/FileType?pageSize=200', '/DocumentTypes?pageSize=200']) {
+        try {
+          const { body } = await request(ep);
+          const list = normList(body);
+          if (list.length) {
+            fileTypes = list.map((f) => ({ id: f.FileTypeID ?? f.ID ?? f.DocumentTypeID, name: f.Name, ep }));
+            break;
+          }
+        } catch {
+          /* try next alias */
+        }
+      }
+      out.fileTypes = fileTypes.slice(0, 25);
+      const ftId = fileTypes[0]?.id ?? null;
+
       const variants = [
-        { label: 'array, no EntityType, File', body: [{ Description: fname, File: file }] },
-        { label: 'object, no EntityType, File', body: { Description: fname, File: file } },
-        {
-          label: 'array, EntityType+EntityKeyID, File',
-          body: [{ EntityType: 'CreditCardTransaction', EntityKeyID: txn, Description: fname, File: file }],
-        },
-        { label: 'array, Files[] (plural)', body: [{ Description: fname, Files: [file] }] },
-        { label: 'array, File w/ FileName', body: [{ Description: fname, File: { FileName: fname, Extension: 'pdf', Content: content } }] },
+        { label: 'array, File, no FileType', body: [{ Description: fname, File: file }] },
+        ...(ftId != null
+          ? [
+              {
+                label: `array, File.FileTypeID=${ftId}`,
+                body: [{ Description: fname, File: { ...file, FileTypeID: ftId } }],
+              },
+              {
+                label: `array, FileTypeID=${ftId} on attachment`,
+                body: [{ Description: fname, FileTypeID: ftId, File: file }],
+              },
+              {
+                label: `array, File.FileType={ID}`,
+                body: [{ Description: fname, File: { ...file, FileType: { FileTypeID: ftId } } }],
+              },
+            ]
+          : []),
+        { label: 'array, File w/ IsActive+FileName', body: [{ Description: fname, IsActive: true, File: { Name: fname, Extension: 'pdf', Content: content, IsActive: true } }] },
       ];
 
       out.postAttempts = [];
