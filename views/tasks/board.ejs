@@ -34,7 +34,7 @@
         </div>
         <div class="tkb-list" data-droplist>
           <% col.tasks.forEach((t) => { const du = dueInfo(t); const a = t.assignees[0]; %>
-            <a class="tkb-card" style="border-left-color:<%= PRC[t.priority] %>" href="/tasks/board?sel=<%= t.id %>&tab=conversation" draggable="true" data-task-id="<%= t.id %>">
+            <a class="tkb-card" style="border-left-color:<%= PRC[t.priority] %>" href="/tasks/board?sel=<%= t.id %>&tab=overview" draggable="true" data-task-id="<%= t.id %>">
               <div class="tkb-card__top">
                 <% if (t.category) { %><span class="tktable__cat"><%= t.category %></span><% } %>
                 <div style="flex:1"></div>
