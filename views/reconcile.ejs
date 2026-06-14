@@ -1,0 +1,96 @@
+<%
+  const fmtMoney = (v) => {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+  };
+  const fmtDate = (d) => {
+    if (!d) return '—';
+    const dt = new Date(d);
+    return Number.isNaN(dt.getTime()) ? '—' : dt.toISOString().slice(0, 10);
+  };
+%>
+
+<section class="page-head">
+  <h1 class="page-title">Statement reconciliation</h1>
+  <p class="page-sub">Upload a credit card or bank statement to see which charges are missing a receipt.</p>
+</section>
+
+<form class="dropzone" id="dropzone" action="/reconcile/upload" method="post" enctype="multipart/form-data">
+  <input type="file" name="statement" id="fileInput" accept=".csv,.txt,application/pdf,text/csv" hidden />
+  <div class="dropzone__inner">
+    <div class="dropzone__icon" aria-hidden="true">＋</div>
+    <p class="dropzone__lead">Drop a statement, or <button type="button" class="linkbtn" id="browseBtn">browse</button>.</p>
+    <p class="dropzone__hint">CSV / Excel-exported CSV, or a PDF statement</p>
+    <p class="dropzone__file" id="chosenFile" hidden></p>
+  </div>
+  <div class="dropzone__actions" id="dropzoneActions" hidden>
+    <button type="submit" class="btn btn--primary" id="uploadBtn">Upload and reconcile</button>
+  </div>
+</form>
+
+<% if (current) { %>
+  <div class="recon-summary ledger-rule">
+    <div class="recon-stat">
+      <span class="recon-stat__num"><%= summary.total %></span>
+      <span class="recon-stat__label">charges</span>
+    </div>
+    <div class="recon-stat">
+      <span class="recon-stat__num recon-stat__num--ok"><%= summary.matched %></span>
+      <span class="recon-stat__label">have a receipt</span>
+    </div>
+    <div class="recon-stat">
+      <span class="recon-stat__num recon-stat__num--bad"><%= summary.missing %></span>
+      <span class="recon-stat__label">missing a receipt</span>
+    </div>
+    <div class="recon-meta">
+      <span>From <strong><%= current.original_name %></strong> (<%= current.source_type %>)</span>
+      <a class="rowlink rowlink--quiet" href="/reconcile/<%= current.id %>/delete"
+         onclick="return confirm('Remove this statement?');">Remove</a>
+    </div>
+  </div>
+
+  <div class="ledger-wrap">
+    <table class="ledger">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Description</th>
+          <th>Card</th>
+          <th class="num">Amount</th>
+          <th>Receipt</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% charges.forEach((c) => { %>
+          <tr>
+            <td data-label="Date"><%= fmtDate(c.charge_date) %></td>
+            <td data-label="Description"><span class="cell-primary"><%= c.description || '—' %></span></td>
+            <td data-label="Card"><%= c.last4 ? '•••• ' + c.last4 : '—' %></td>
+            <td data-label="Amount" class="num"><%= fmtMoney(c.amount) %></td>
+            <td data-label="Receipt">
+              <% if (c.status === 'matched') { %>
+                <a class="pill pill--confirmed" href="/invoice/<%= c.matched_invoice_id %>" style="text-decoration:none;">receipt #<%= c.matched_invoice_id %></a>
+              <% } else { %>
+                <span class="pill pill--error">missing receipt</span>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } else { %>
+  <div class="empty">
+    <p class="empty__title">No statement loaded</p>
+    <p class="empty__body">Upload a statement above and we'll match each charge against the receipts you've processed, then flag the ones still missing a receipt.</p>
+  </div>
+<% } %>
+
+<% if (statements && statements.length > 1) { %>
+  <p class="page-sub" style="margin-top:18px;">Earlier uploads:
+    <% statements.slice(1).forEach((s) => { %>
+      <a class="rowlink" href="/reconcile/<%= s.id %>/delete" onclick="return confirm('Remove this statement?');"><%= s.original_name %> ✕</a>
+    <% }) %>
+  </p>
+<% } %>

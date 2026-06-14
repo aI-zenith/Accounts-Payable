@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import invoiceRoutes from './routes/invoices.js';
 import settingsRoutes from './routes/settings.js';
+import reconcileRoutes from './routes/reconcile.js';
 import { warmToken } from './services/rmClient.js';
 import { runMigrations } from './db/migrate.js';
 
@@ -39,6 +40,7 @@ app.get('/healthz', (req, res) => res.json({ ok: true }));
 // Routes.
 app.use('/', invoiceRoutes);
 app.use('/', settingsRoutes);
+app.use('/', reconcileRoutes);
 
 // 404.
 app.use((req, res) => {

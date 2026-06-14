@@ -49,6 +49,29 @@ const STATEMENTS = [
      rm_card_name text,
      created_at   timestamptz DEFAULT now()
    )`,
+
+  // Statement reconciliation: uploaded statements and their parsed charges.
+  `CREATE TABLE IF NOT EXISTS statements (
+     id            serial PRIMARY KEY,
+     original_name text NOT NULL,
+     source_type   text,
+     charge_count  int DEFAULT 0,
+     created_at    timestamptz DEFAULT now()
+   )`,
+
+  `CREATE TABLE IF NOT EXISTS statement_charges (
+     id                serial PRIMARY KEY,
+     statement_id      int REFERENCES statements(id) ON DELETE CASCADE,
+     charge_date       date,
+     amount            numeric(12,2),
+     description       text,
+     last4             text,
+     matched_invoice_id int,
+     status            text NOT NULL DEFAULT 'missing',
+     created_at        timestamptz DEFAULT now()
+   )`,
+
+  `CREATE INDEX IF NOT EXISTS statement_charges_statement_idx ON statement_charges (statement_id)`,
 ];
 
 export async function runMigrations() {
