@@ -280,7 +280,8 @@ export async function attachReceipt(transactionId, fileBuffer, filename) {
     File: {
       Name: name,
       Extension: ext,
-      Data: base64,
+      // FileModel stores the bytes in Content (Byte[]); JSON carries it as base64.
+      Content: base64,
     },
   };
   const { body, location } = await request(`/CreditCardTransactions/${transactionId}/Attachments`, {
