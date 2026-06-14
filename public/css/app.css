@@ -982,6 +982,41 @@ a.chip:hover { border-color: var(--line-strong); }
   .board { grid-template-columns: 1fr; }
 }
 
+/* ---------- Install (PWA) card ---------- */
+.install-card__head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.install-card__icon { border-radius: 14px; box-shadow: 0 2px 8px rgba(16, 21, 28, 0.18); }
+.install-card__btn { width: 100%; justify-content: center; display: inline-flex; align-items: center; }
+.install-card__note { margin-top: 10px; }
+.install-card__installed { display: none; background: var(--green-wash, #e7f5ee); color: #1f7a53; border: 1px solid #b9e3cd; border-radius: 10px; padding: 10px 12px; font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+html.pwa-installed .install-card__installed { display: block; }
+html.pwa-installed .install-card__btn,
+html.pwa-installed .install-card__note { display: none; }
+.howto { padding: 12px 0; border-top: 1px solid var(--line); }
+.howto:first-of-type { border-top: 0; padding-top: 0; }
+.howto__os { font-size: 12px; font-weight: 700; letter-spacing: 0.02em; color: var(--ink); margin-bottom: 6px; }
+.howto__steps { margin: 0; padding-left: 18px; color: var(--ink-muted); font-size: 13px; line-height: 1.8; }
+.howto__steps strong { color: var(--ink); }
+.kbdmini { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border: 1px solid var(--line-strong); border-radius: 5px; font-size: 11px; vertical-align: middle; }
+
+/* ---------- Mobile / small-screen polish ---------- */
+@media (max-width: 640px) {
+  .content { padding: 18px 14px 56px; }
+  .content--flush { padding: 14px 12px 48px; }
+  .appbar { padding: 0 14px; height: 54px; }
+  .appbar__crumb { display: none; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .page-head--row { flex-direction: column; align-items: stretch; gap: 12px; }
+  .page-title { font-size: 21px; }
+  .ledger-wrap, .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .subnav { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+  .subnav__tab { white-space: nowrap; }
+  .install-card__head { gap: 12px; }
+}
+/* Comfortable tap targets on touch devices. */
+@media (hover: none) and (pointer: coarse) {
+  .navlink, .navsub__link, .subnav__tab, .btn, .tkd-tab { min-height: 40px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mm__roller, .mm__belt, .bill { animation: none; }
   .bill { opacity: 1; }

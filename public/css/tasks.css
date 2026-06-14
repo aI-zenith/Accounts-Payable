@@ -288,3 +288,42 @@
   .tktable { overflow-x: auto; }
   .tktable__row { min-width: 760px; }
 }
+
+/* ---------- phones ---------- */
+@media (max-width: 640px) {
+  .tk-top { gap: 10px; }
+  .tk-title { font-size: 18px; }
+  .tk-search { flex: 1 1 100%; max-width: none; order: 5; }
+  .tk-views { padding: 2px; }
+  .tk-views__lbl { display: none; }
+  .tk-views a { padding: 6px 10px; }
+
+  .tk-filters { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+  .tk-fchip { flex: 0 0 auto; }
+  .tk-fspacer, .tk-count { display: none; }
+
+  .tk-inbox { height: auto; border-radius: 10px; }
+  .tkin-list { max-height: 300px; }
+
+  .tkd-head { padding: 14px 16px 12px; }
+  .tkd-crumb { gap: 6px; }
+  .tkd-title { font-size: 18px; }
+  .tkd-tabs { padding: 0 16px; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+  .tkd-tab { white-space: nowrap; margin-right: 16px; }
+  .tkd-body { padding: 16px; }
+  .tkd-grid { grid-template-columns: 1fr; }
+  .tkd-gcell:nth-child(odd) { border-right: none; }
+  .tkd-gcell:nth-last-child(2) { border-bottom: 1px solid var(--c-bd2); }
+
+  /* Detail opens as a full-screen sheet on a phone. */
+  .tk-drawer { width: 100vw; max-width: 100vw; border-left: none; }
+  .tk-modal { width: 100vw; max-width: 100vw; height: 100dvh; max-height: none; top: 0; left: 0; transform: none; border-radius: 0; }
+
+  /* Board: one column at a time, swipe across. */
+  .tkb { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 84vw; scroll-snap-type: x mandatory; }
+  .tkb-col { scroll-snap-align: start; }
+
+  .tkform-wrap { max-width: none; }
+  .tkcc { gap: 8px; }
+  .tkcc__send { padding: 8px 14px; }
+}
