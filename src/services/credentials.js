@@ -36,11 +36,34 @@ function resolveBaseUrl(subdomain, envBase) {
   return envBase ? envBase.trim().replace(/\/+$/, '') : null;
 }
 
+// Parse a comma/space/semicolon-separated allow-list of sender addresses into a
+// lowercased array. Empty / unset -> [] (meaning "accept any sender").
+function parseSenders(raw) {
+  if (!raw) return [];
+  return String(raw)
+    .split(/[\s,;]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+// Resolve a tri-state boolean: a real DB boolean wins; else an env string
+// ('true'/'1'/'yes' = true), else the provided default.
+function resolveBool(dbValue, envValue, dflt) {
+  if (typeof dbValue === 'boolean') return dbValue;
+  if (envValue != null && envValue !== '') {
+    return /^(1|true|yes|on)$/i.test(String(envValue).trim());
+  }
+  return dflt;
+}
+
 export async function getCredentials() {
   let row = {};
   try {
     const res = await query(
-      'SELECT rm_subdomain, rm_username, rm_password, anthropic_api_key FROM settings WHERE id = 1'
+      `SELECT rm_subdomain, rm_username, rm_password, anthropic_api_key,
+              imap_host, imap_port, imap_user, imap_password, imap_mailbox,
+              imap_allowed_senders, email_auto_push
+         FROM settings WHERE id = 1`
     );
     row = res.rows[0] || {};
   } catch (err) {
@@ -67,6 +90,17 @@ export async function getCredentials() {
     },
     anthropic: {
       apiKey: pick(row.anthropic_api_key, process.env.ANTHROPIC_API_KEY),
+    },
+    // Inbox (IMAP) config for automatic email intake. host/user/password are the
+    // minimum needed to poll; everything else has a sensible default.
+    email: {
+      host: row.imap_host || process.env.IMAP_HOST || null,
+      port: Number(row.imap_port || process.env.IMAP_PORT || 993),
+      user: row.imap_user || process.env.IMAP_USER || null,
+      password: pick(row.imap_password, process.env.IMAP_PASSWORD),
+      mailbox: row.imap_mailbox || process.env.IMAP_MAILBOX || 'INBOX',
+      allowedSenders: parseSenders(row.imap_allowed_senders || process.env.IMAP_ALLOWED_SENDERS),
+      autoPush: resolveBool(row.email_auto_push, process.env.EMAIL_AUTO_PUSH, true),
     },
   };
 }

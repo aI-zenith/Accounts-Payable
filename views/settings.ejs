@@ -58,6 +58,67 @@
     </div>
   </section>
 
+  <!-- Email inbox (IMAP) -->
+  <section class="card ledger-rule" data-integration="email">
+    <header class="card__head">
+      <div class="card__title">
+        <span class="dot" data-dot aria-hidden="true"></span>
+        <h2>Email inbox</h2>
+      </div>
+      <button type="button" class="btn btn--ghost btn--sm" data-test="email">Test connection</button>
+    </header>
+    <p class="card__status" data-status hidden></p>
+    <p class="card__intro">Bills emailed to this mailbox are ingested automatically: each PDF attachment is extracted and pushed to Rent Manager as a credit card transaction. Use a dedicated inbox the bills are forwarded to.</p>
+
+    <div class="fieldrow">
+      <label class="field">
+        <span class="field__label">IMAP host</span>
+        <input class="input" type="text" name="imap_host" value="<%= settings.imap_host %>"
+               placeholder="imap.gmail.com" autocomplete="off" />
+        <span class="field__hint">e.g. <code>imap.gmail.com</code>, <code>outlook.office365.com</code></span>
+      </label>
+      <label class="field">
+        <span class="field__label">Port</span>
+        <input class="input" type="number" name="imap_port" value="<%= settings.imap_port %>"
+               placeholder="993" autocomplete="off" />
+        <span class="field__hint">993 = implicit TLS (recommended)</span>
+      </label>
+    </div>
+    <div class="fieldrow">
+      <label class="field">
+        <span class="field__label">Username</span>
+        <input class="input" type="text" name="imap_user" value="<%= settings.imap_user %>"
+               placeholder="bills@yourdomain.com" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span class="field__label">Password</span>
+        <input class="input" type="password" name="imap_password" autocomplete="new-password"
+               placeholder="<%= settings.has_imap_password ? settings.imap_password_masked : 'Not set' %>" />
+        <span class="field__hint">For Gmail/Office365 use an <strong>app password</strong>, not your login.</span>
+      </label>
+    </div>
+    <div class="fieldrow">
+      <label class="field">
+        <span class="field__label">Mailbox / folder</span>
+        <input class="input" type="text" name="imap_mailbox" value="<%= settings.imap_mailbox %>"
+               placeholder="INBOX" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span class="field__label">Only accept from (optional)</span>
+        <input class="input" type="text" name="imap_allowed_senders" value="<%= settings.imap_allowed_senders %>"
+               placeholder="billing@vendor.com, ap@othervendor.com" autocomplete="off" />
+        <span class="field__hint">Comma-separated allow-list. Blank = accept any sender.</span>
+      </label>
+    </div>
+    <div class="fieldrow">
+      <label class="field field--check">
+        <input type="checkbox" name="email_auto_push" <%= settings.email_auto_push ? 'checked' : '' %> />
+        <span class="field__label">Auto-push to Rent Manager</span>
+        <span class="field__hint">On: emailed bills post automatically when the card, vendor and property all match (anything unmatched waits for review). Off: every emailed bill waits for review.</span>
+      </label>
+    </div>
+  </section>
+
   <div class="settings__actions">
     <button type="submit" class="btn btn--primary">Save settings</button>
   </div>

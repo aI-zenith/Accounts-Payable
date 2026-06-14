@@ -40,6 +40,27 @@ const STATEMENTS = [
   // stored_path is now optional (legacy/disk fallback only).
   `ALTER TABLE invoices ALTER COLUMN stored_path DROP NOT NULL`,
 
+  // Email intake: where the invoice came from ('upload' | 'email') plus the
+  // originating message metadata. email_message_id is used to de-duplicate so a
+  // re-polled message never creates a second row.
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS source text DEFAULT 'upload'`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS email_from text`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS email_subject text`,
+  `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS email_message_id text`,
+  `CREATE INDEX IF NOT EXISTS invoices_email_msg_idx ON invoices (email_message_id)`,
+
+  // Inbox (IMAP) settings for automatic email intake. The password is stored
+  // encrypted (same scheme as the RM/Claude secrets); everything else is plain.
+  // email_auto_push: when true, an emailed bill is pushed to Rent Manager
+  // automatically once card/vendor/property all match (else it waits for review).
+  `ALTER TABLE settings ADD COLUMN IF NOT EXISTS imap_host text`,
+  `ALTER TABLE settings ADD COLUMN IF NOT EXISTS imap_port int`,
+  `ALTER TABLE settings ADD COLUMN IF NOT EXISTS imap_user text`,
+  `ALTER TABLE settings ADD COLUMN IF NOT EXISTS imap_password text`,
+  `ALTER TABLE settings ADD COLUMN IF NOT EXISTS imap_mailbox text`,
+  `ALTER TABLE settings ADD COLUMN IF NOT EXISTS imap_allowed_senders text`,
+  `ALTER TABLE settings ADD COLUMN IF NOT EXISTS email_auto_push boolean DEFAULT true`,
+
   // Default expense (GL) account for the credit card transaction allocation.
   `ALTER TABLE settings ADD COLUMN IF NOT EXISTS default_gl_account_id text`,
   `ALTER TABLE settings ADD COLUMN IF NOT EXISTS default_gl_account_name text`,

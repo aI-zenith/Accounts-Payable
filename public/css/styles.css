@@ -504,6 +504,44 @@ input:focus-visible,
   font-size: 12px;
   color: var(--ink-muted);
 }
+/* A checkbox row: box + label inline, hint on its own line below. */
+.field--check {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.field--check input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+.field--check .field__label { text-transform: none; letter-spacing: 0; }
+.field--check .field__hint { flex-basis: 100%; }
+/* Short explanatory lead inside an integration card. */
+.card__intro {
+  font-size: 13px;
+  color: var(--ink-muted);
+  margin: 0 0 4px;
+  max-width: 60ch;
+}
+/* Small inline source tag (e.g. "email") next to a ledger row's vendor. */
+.tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.tag--email {
+  color: var(--accent);
+  background: var(--accent-wash, rgba(0, 0, 0, 0.06));
+  border: 1px solid var(--line-strong);
+}
 .input {
   font: inherit;
   font-size: 14px;

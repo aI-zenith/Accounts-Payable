@@ -11,8 +11,10 @@
 //
 // WRITE: pushes an invoice to Rent Manager as a Credit Card Transaction
 // (POST /CreditCardTransactions) after resolving the credit card, vendor, and
-// property by name. Vendors are auto-created when missing; an unmatched
-// property/job is flagged for manual review by the route.
+// property. Vendors are auto-created when missing. The property is derived from
+// the CREDIT CARD (findPropertyForCreditCard) and then verified against the
+// invoice's job/property reference (jobMatchesPropertyOrUnit — it must name the
+// property or one of its units); an unmatched property/job is flagged for review.
 
 import { getCredentials } from './credentials.js';
 
@@ -239,6 +241,104 @@ export async function findVendorByName(name) {
 export async function findPropertyByName(name) {
   const props = await listAll('/Properties?pageSize=1000');
   return bestMatch(name, props, [(p) => p.Name, (p) => p.ShortName]);
+}
+
+// Fetch a single property by id (null on any miss).
+export async function getPropertyById(id) {
+  if (id == null) return null;
+  try {
+    const { body } = await request(`/Properties/${id}`);
+    return body && (body.PropertyID || body.ID || body.Name) ? body : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the property a credit card belongs to — the PRIMARY way a bill is
+ * assigned to a property. RM links a card to a property in one of a few shapes
+ * depending on account config, so we try them in order, then fall back to
+ * matching the card's name against a property name.
+ */
+export async function findPropertyForCreditCard(card) {
+  if (!card) return null;
+
+  // 1) A PropertyID directly on the card record.
+  const directId = card.PropertyID ?? card.PropertyId ?? null;
+  if (directId != null) {
+    const p = await getPropertyById(directId);
+    if (p) return p;
+  }
+
+  // 2) An already-embedded Property object.
+  if (card.Property && (card.Property.PropertyID || card.Property.Name)) {
+    return card.Property;
+  }
+
+  // 3) Re-fetch the card asking RM to embed its Property / expose its PropertyID.
+  const cid = card.CreditCardID ?? card.ID;
+  if (cid != null) {
+    try {
+      const { body } = await request(`/CreditCards/${cid}?embeds=Property`);
+      if (body && body.Property && (body.Property.PropertyID || body.Property.Name)) {
+        return body.Property;
+      }
+      const pid = body?.PropertyID ?? body?.PropertyId ?? null;
+      if (pid != null) {
+        const p = await getPropertyById(pid);
+        if (p) return p;
+      }
+    } catch {
+      /* fall through to name match */
+    }
+  }
+
+  // 4) Fallback: the card is named after its property (e.g. "Wood Ave").
+  return findPropertyByName(card.Name);
+}
+
+// List a property's units, trying a server-side filter first, then an embed.
+async function listUnitsForProperty(propertyId) {
+  if (propertyId == null) return [];
+  try {
+    const units = await listAll(`/Units?filter=PropertyID,eq,${propertyId}&pageSize=1000`);
+    if (units.length) return units;
+  } catch {
+    /* try embed instead */
+  }
+  try {
+    const { body } = await request(`/Properties/${propertyId}?embeds=Units`);
+    return Array.isArray(body?.Units) ? body.Units : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * SECONDARY verification: the invoice's job/property reference must name the
+ * card's property (by Name/ShortName) OR one of that property's units. Returns
+ * true only when it matches — an empty/unknown job ref does NOT auto-pass.
+ */
+export async function jobMatchesPropertyOrUnit(property, jobRef) {
+  if (!property || !jobRef) return false;
+  const n = norm(jobRef);
+  if (!n) return false;
+
+  // a) Matches the property itself.
+  for (const cand of [property.Name, property.ShortName]) {
+    const c = norm(cand);
+    if (c && (c === n || c.includes(n) || n.includes(c))) return true;
+  }
+
+  // b) Matches one of the property's units.
+  const pid = property.PropertyID ?? property.ID;
+  const units = await listUnitsForProperty(pid);
+  const unit = bestMatch(jobRef, units, [
+    (u) => u.Name,
+    (u) => u.UnitNumber,
+    (u) => u.ShortName,
+  ]);
+  return Boolean(unit);
 }
 
 // Create a vendor when the invoice's merchant isn't found, then return it.
