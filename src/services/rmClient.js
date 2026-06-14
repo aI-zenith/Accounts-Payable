@@ -363,48 +363,104 @@ export async function createCreditCardTransaction(payload) {
   return extractId(body, location, ['CreditCardTransactionID', 'TransactionID', 'ID']);
 }
 
+// Derive the rmx "/api" host (where file upload + attachment live) from the
+// configured WAPI base. e.g. https://bluegm.api.rentmanager.com ->
+// https://bluegm.rmx.rentmanager.com/api. Overridable via RENTMANAGER_RMX_BASE_URL.
+function rmxBaseFrom(apiBase) {
+  if (process.env.RENTMANAGER_RMX_BASE_URL) return trimSlash(process.env.RENTMANAGER_RMX_BASE_URL);
+  if (!apiBase) return null;
+  try {
+    const u = new URL(apiBase);
+    const host = u.host.replace(/\.api\.rentmanager\.com$/i, '.rmx.rentmanager.com');
+    return `https://${host}/api`;
+  } catch {
+    return null;
+  }
+}
+
+async function getRmxBase() {
+  const { rm } = await getCredentials();
+  const base = rmxBaseFrom(trimSlash(rm.baseUrl));
+  if (!base) throw new Error('Could not derive the Rent Manager rmx (/api) base URL.');
+  return base;
+}
+
 /**
- * Attach a receipt file to the created record (FileAttachments/Save).
- * Called as a separate, non-fatal step so a failure never undoes the
- * already-created transaction. Returns the new attachment/file id.
- *
- * Endpoint + shape confirmed via discovery against the live `bluegm` account:
- *   - The CCT exposes an `Attachments` child collection (embeds=Attachments
- *     returns it; FileAttachments/Files/Details/etc. all 404). There is no
- *     top-level /FileAttachments or /Attachments collection.
- *   - So the receipt posts to /CreditCardTransactions/{id}/Attachments — that
- *     endpoint exists (a bare body 500s there, a missing one 404s).
- *   - Body MUST be an ARRAY of attachment objects — a bare object 500s with
- *     "issue retrieving data from the database".
- *   - The nested File is REQUIRED on create; its Content is a Byte[] carried as
- *     base64 in JSON. RM creates the File and back-fills FileID automatically.
- *     EntityType/EntityKeyID identify the parent (the URL also scopes it).
+ * Step 1 of attaching: upload the raw bytes as multipart/form-data to the rmx
+ * /Files endpoint and return the new FileID. (The dedicated WAPI host has no
+ * /Files resource — uploads only exist on the rmx /api host.)
+ */
+async function uploadFile(fileBuffer, filename) {
+  const base = await getRmxBase();
+  const name = filename || 'receipt.pdf';
+
+  const doUpload = (token) => {
+    const form = new FormData();
+    // The file part is named "Content"; the filename carries the extension.
+    form.append('Content', new Blob([fileBuffer], { type: 'application/pdf' }), name);
+    form.append('Name', name);
+    return fetch(`${base}/Files`, {
+      method: 'POST',
+      // Do NOT set Content-Type — fetch adds the multipart boundary itself.
+      headers: { Accept: 'application/json', 'X-RM12Api-ApiToken': token },
+      body: form,
+    });
+  };
+
+  let token = await getToken();
+  let res = await doUpload(token);
+  if (res.status === 401) {
+    token = await authenticate();
+    res = await doUpload(token);
+  }
+
+  const text = await res.text();
+  if (!res.ok) {
+    const err = new Error(`Rent Manager file upload failed: HTTP ${res.status} ${String(text).slice(0, 300)}`);
+    err.status = res.status;
+    throw err;
+  }
+  let body = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = text;
+  }
+  const obj = Array.isArray(body) ? body[0] : body;
+  const fileId = obj && (obj.FileID ?? obj.FileId ?? obj.ID);
+  if (fileId == null) {
+    throw new Error(`File uploaded but no FileID was returned: ${String(text).slice(0, 200)}`);
+  }
+  return fileId;
+}
+
+/**
+ * Attach a receipt PDF to a credit card transaction. Two steps, confirmed
+ * against a live attachment on the `bluegm` account:
+ *   1. Upload the bytes (multipart) to the rmx /Files endpoint -> FileID.
+ *   2. POST the attachment record linking that FileID to the transaction:
+ *      { EntityType: 38, EntityKeyID: <txnId>, FileID, Description }.
+ *      EntityType 38 = CreditCardTransaction (eFileAttachmentRelatedObjectTypes).
+ * Non-fatal by contract (the route swallows errors) so a failure here never
+ * undoes the already-created transaction. Returns the new FileAttachmentID.
  */
 export async function attachReceipt(transactionId, fileBuffer, filename) {
-  const base64 = Buffer.isBuffer(fileBuffer) ? fileBuffer.toString('base64') : String(fileBuffer);
   const name = filename || 'receipt.pdf';
-  const dot = name.lastIndexOf('.');
-  const ext = (dot >= 0 ? name.slice(dot + 1) : 'pdf').toLowerCase();
+  const buf = Buffer.isBuffer(fileBuffer) ? fileBuffer : Buffer.from(fileBuffer);
 
-  // The /CreditCardTransactions/{id}/Attachments URL already scopes the parent,
-  // so EntityType/EntityKeyID are omitted — sending EntityType "CreditCardTransaction"
-  // (not a valid eFileAttachmentRelatedObjectTypes enum value) is what produced
-  // the "issue retrieving data from the database" 500 in both the bare-object and
-  // array attempts.
-  const payload = [
-    {
-      Description: name,
-      File: {
-        Name: name,
-        Extension: ext,
-        // FileModel stores the bytes in Content (Byte[]); JSON carries it as base64.
-        Content: base64,
-      },
-    },
-  ];
-  const { body, location } = await request(`/CreditCardTransactions/${transactionId}/Attachments`, {
+  // Step 1 — upload to RM document storage to obtain a FileID.
+  const fileId = await uploadFile(buf, name);
+
+  // Step 2 — link the uploaded file to the credit card transaction.
+  const base = await getRmxBase();
+  const { body, location } = await request(`${base}/CreditCardTransactions/${transactionId}/Attachments`, {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      EntityType: 38,
+      EntityKeyID: Number(transactionId),
+      FileID: fileId,
+      Description: name,
+    }),
   });
   return extractId(body, location, ['FileAttachmentID', 'FileID', 'ID']);
 }
