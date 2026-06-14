@@ -278,141 +278,59 @@ router.get(
   wrap(async (req, res) => {
     const out = {};
 
-    // 0) Read RM's own Help doc for THIS subresource via the authenticated
-    //    client (it 403s unauthenticated). The ASP.NET Web API Help page server-
-    //    renders the request model + a JSON sample; strip tags so the field
-    //    names + sample are readable.
-    const stripTags = (html) =>
-      String(html)
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/\s+/g, ' ')
-        .trim();
-    for (const helpUrl of [
-      '/Help/Subresource/CreditCardTransactions/Attachments',
-      '/Help/ResourceModel?modelName=FileAttachment',
-      '/Help/ResourceModel?modelName=File',
-    ]) {
+    // Discover the file-UPLOAD endpoint (step 1 of attaching). The inline POSTs
+    // all hit a MySqlException because the bytes must be uploaded to RM storage
+    // first, and /api/Files 404s — so find the real upload route. All read-only:
+    //   - confirm the known reference attachment (txn 14459 / File 180573),
+    //   - GET-probe candidate endpoints on both hosts (404 = no route,
+    //     405 = exists-but-not-GET i.e. a likely POST upload target, 200 = readable).
+    const { rm } = await getCredentials();
+    const apiBase = rm.baseUrl ? rm.baseUrl.replace(/\/+$/, '') : null;
+    let rmxBase = process.env.RENTMANAGER_RMX_BASE_URL
+      ? process.env.RENTMANAGER_RMX_BASE_URL.replace(/\/+$/, '')
+      : null;
+    if (!rmxBase && apiBase) {
       try {
-        const r = await request(helpUrl);
-        const text = typeof r.body === 'string' ? r.body : JSON.stringify(r.body);
-        out[`help:${helpUrl}`] = { status: r.status, text: stripTags(text).slice(0, 8000) };
-      } catch (err) {
-        out[`help:${helpUrl}`] = { error: err.message, status: err.status ?? null };
-      }
-    }
-
-    // 1) Hunt for an existing attachment to copy its structure exactly.
-    try {
-      const samples = [];
-      let scanned = 0;
-      for (let page = 1; page <= 6 && samples.length < 3; page++) {
-        const { body } = await request(
-          `/CreditCardTransactions?embeds=Attachments&pageSize=200&pageNumber=${page}`
-        );
-        const list = Array.isArray(body) ? body : body ? [body] : [];
-        scanned += list.length;
-        for (const t of list) {
-          if (Array.isArray(t.Attachments) && t.Attachments.length && samples.length < 3) {
-            samples.push({
-              CreditCardTransactionID: t.ID,
-              attachmentKeys: Object.keys(t.Attachments[0] || {}),
-              attachment: t.Attachments[0],
-            });
-          }
-        }
-        if (list.length < 200) break; // last page
-      }
-      out.existingAttachmentSamples = { scanned, found: samples.length, samples };
-    } catch (err) {
-      out.existingAttachmentSamples = { error: err.message };
-    }
-
-    // 2) Optional: try POSTing to ?txn with several body variants.
-    const txn = req.query.txn ? Number(req.query.txn) : null;
-    if (txn) {
-      // Prefer the real stored receipt for this transaction; else a tiny stub.
-      let bytes;
-      let fname = 'probe.pdf';
-      try {
-        const { rows } = await query(
-          'SELECT file_data, original_name FROM invoices WHERE rm_project_id = $1 LIMIT 1',
-          [String(txn)]
-        );
-        if (rows[0]?.file_data) {
-          bytes = rows[0].file_data;
-          fname = rows[0].original_name || fname;
-        }
+        rmxBase = `https://${new URL(apiBase).host.replace(/\.api\.rentmanager\.com$/i, '.rmx.rentmanager.com')}/api`;
       } catch {
-        /* fall through to stub */
+        rmxBase = null;
       }
-      if (!bytes) bytes = Buffer.from('%PDF-1.4\n%%EOF\n', 'utf8');
-      const content = Buffer.isBuffer(bytes) ? bytes.toString('base64') : String(bytes);
-      const file = { Name: fname, Extension: 'pdf', Content: content };
-      const url = `/CreditCardTransactions/${txn}/Attachments`;
+    }
+    out.hosts = { apiBase, rmxBase };
 
-      // A MySqlException (DB-level) most often means a required FK is missing —
-      // RM files hang off a FileType. Pull the account's FileTypes so we can send
-      // a valid one and surface the list either way.
-      const normList = (b) => (Array.isArray(b) ? b : b ? [b] : []);
-      let fileTypes = [];
-      for (const ep of ['/FileTypes?pageSize=200', '/FileType?pageSize=200', '/DocumentTypes?pageSize=200']) {
-        try {
-          const { body } = await request(ep);
-          const list = normList(body);
-          if (list.length) {
-            fileTypes = list.map((f) => ({ id: f.FileTypeID ?? f.ID ?? f.DocumentTypeID, name: f.Name, ep }));
-            break;
-          }
-        } catch {
-          /* try next alias */
-        }
+    const ref = req.query.ref ? Number(req.query.ref) : 14459;
+    const fileId = req.query.fileid ? Number(req.query.fileid) : 180573;
+
+    const read = async (label, url) => {
+      if (!url) return;
+      try {
+        const r = await request(url);
+        out[label] = { ok: true, status: r.status, body: r.body };
+      } catch (err) {
+        out[label] = { ok: false, status: err.status ?? null, error: String(err.message).slice(0, 300) };
       }
-      out.fileTypes = fileTypes.slice(0, 25);
-      const ftId = fileTypes[0]?.id ?? null;
+    };
+    await read('refAttachment_rmx', rmxBase && `${rmxBase}/CreditCardTransactions/${ref}?embeds=Attachments`);
+    await read('refAttachment_api', apiBase && `${apiBase}/CreditCardTransactions/${ref}?embeds=Attachments`);
+    await read('refFile_rmx', rmxBase && `${rmxBase}/Files/${fileId}`);
+    await read('refFile_api', apiBase && `${apiBase}/Files/${fileId}`);
 
-      const variants = [
-        { label: 'array, File, no FileType', body: [{ Description: fname, File: file }] },
-        ...(ftId != null
-          ? [
-              {
-                label: `array, File.FileTypeID=${ftId}`,
-                body: [{ Description: fname, File: { ...file, FileTypeID: ftId } }],
-              },
-              {
-                label: `array, FileTypeID=${ftId} on attachment`,
-                body: [{ Description: fname, FileTypeID: ftId, File: file }],
-              },
-              {
-                label: `array, File.FileType={ID}`,
-                body: [{ Description: fname, File: { ...file, FileType: { FileTypeID: ftId } } }],
-              },
-            ]
-          : []),
-        { label: 'array, File w/ IsActive+FileName', body: [{ Description: fname, IsActive: true, File: { Name: fname, Extension: 'pdf', Content: content, IsActive: true } }] },
-      ];
-
-      out.postAttempts = [];
-      for (const v of variants) {
-        try {
-          const r = await request(url, { method: 'POST', body: JSON.stringify(v.body) });
-          out.postAttempts.push({ variant: v.label, ok: true, status: r.status, body: r.body });
-        } catch (err) {
-          out.postAttempts.push({
-            variant: v.label,
-            ok: false,
-            status: err.status ?? null,
-            error: String(err.message).slice(0, 400),
-          });
-        }
+    const candidates = ['/Files', '/Files/Upload', '/Documents', '/Document', '/ExpressUpload', '/Attachments', '/Upload'];
+    const probeStatus = async (base, path) => {
+      if (!base) return null;
+      try {
+        const r = await request(`${base}${path}`);
+        return r.status;
+      } catch (err) {
+        return err.status ?? String(err.message).slice(0, 50);
       }
+    };
+    out.uploadEndpointProbe = {};
+    for (const path of candidates) {
+      out.uploadEndpointProbe[path] = {
+        rmx: await probeStatus(rmxBase, path),
+        api: await probeStatus(apiBase, path),
+      };
     }
 
     res.json(out);
