@@ -569,8 +569,101 @@
     const sb = form.querySelector('[data-screen]'); if (sb) sb.addEventListener('click', () => startRec('screen'));
     const stb = form.querySelector('[data-rec-stop]'); if (stb) stb.addEventListener('click', stopRec);
     const cb = form.querySelector('[data-rec-cancel]'); if (cb) cb.addEventListener('click', cancelRec);
-    const mb = form.querySelector('[data-mention]'); if (mb && ta) mb.addEventListener('click', () => { ta.value += (ta.value && !ta.value.endsWith(' ') ? ' ' : '') + '@'; ta.focus(); });
     if (ta) ta.addEventListener('paste', (e) => { const f = e.clipboardData && e.clipboardData.files[0]; if (f) setFile(f, 'file'); });
+
+    // ---- @mention autocomplete ----
+    const menu = form.querySelector('[data-mention-menu]');
+    const mentBag = form.querySelector('[data-mentions]');
+    if (ta && menu) {
+      let people = [];
+      let loaded = false;
+      let items = [];
+      let active = -1;
+      const ensurePeople = async () => {
+        if (loaded) return;
+        try { const r = await fetch('/tasks/people'); const d = await r.json(); people = d.results || []; } catch (e) { people = []; }
+        loaded = true;
+      };
+      const close = () => { menu.hidden = true; active = -1; };
+      // The @token immediately before the caret (letters/digits/space, no newline).
+      const tokenAt = () => {
+        const pos = ta.selectionStart;
+        const before = ta.value.slice(0, pos);
+        const m = before.match(/@([\p{L}0-9 ._-]{0,30})$/u);
+        if (!m) return null;
+        // Don't keep matching once a full "name " has been completed.
+        if (/\s$/.test(m[1]) && m[1].trim().includes(' ')) return null;
+        return { q: m[1], start: pos - m[0].length, end: pos };
+      };
+      const addMention = (p) => {
+        if (mentBag && !mentBag.querySelector('input[value="' + p.id + '"]')) {
+          const inp = document.createElement('input');
+          inp.type = 'hidden'; inp.name = 'mentions'; inp.value = p.id;
+          mentBag.appendChild(inp);
+        }
+      };
+      const choose = (p) => {
+        const t = tokenAt();
+        const pos = ta.selectionStart;
+        const start = t ? t.start : pos;
+        const end = t ? t.end : pos;
+        const insert = '@' + p.name + ' ';
+        ta.value = ta.value.slice(0, start) + insert + ta.value.slice(end);
+        const caret = start + insert.length;
+        ta.setSelectionRange(caret, caret);
+        addMention(p);
+        close();
+        ta.focus();
+      };
+      const render = (q) => {
+        const needle = q.trim().toLowerCase();
+        items = people.filter((p) => !needle || p.name.toLowerCase().includes(needle)).slice(0, 6);
+        if (!items.length) { close(); return; }
+        active = 0;
+        menu.innerHTML = items
+          .map((p, i) =>
+            '<div class="tkment__row' + (i === 0 ? ' on' : '') + '" data-i="' + i + '">' +
+            '<span class="av" style="width:24px;height:24px;background:' + avColor(p.name) + ';font-size:10px">' + initials(p.name) + '</span>' +
+            '<div style="flex:1;min-width:0"><div class="tkment__n">' + escTxt(p.name) + '</div>' +
+            (p.role ? '<div class="tkment__r">' + escTxt(p.role) + '</div>' : '') + '</div></div>'
+          )
+          .join('');
+        menu.hidden = false;
+      };
+      const highlight = () => menu.querySelectorAll('.tkment__row').forEach((el, i) => el.classList.toggle('on', i === active));
+      ta.addEventListener('input', async () => {
+        const t = tokenAt();
+        if (!t) { close(); return; }
+        await ensurePeople();
+        render(t.q);
+      });
+      ta.addEventListener('keydown', (e) => {
+        if (menu.hidden) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); active = (active + 1) % items.length; highlight(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); active = (active - 1 + items.length) % items.length; highlight(); }
+        else if (e.key === 'Enter' || e.key === 'Tab') { if (items[active]) { e.preventDefault(); choose(items[active]); } }
+        else if (e.key === 'Escape') { close(); }
+      });
+      menu.addEventListener('mousedown', (e) => {
+        const row = e.target.closest('[data-i]');
+        if (!row) return;
+        e.preventDefault();
+        choose(items[Number(row.dataset.i)]);
+      });
+      const mb = form.querySelector('[data-mention]');
+      if (mb) mb.addEventListener('click', async () => {
+        const pos = ta.selectionStart;
+        const pre = ta.value.slice(0, pos);
+        const ins = (pre && !pre.endsWith(' ') && !pre.endsWith('\n') ? ' ' : '') + '@';
+        ta.value = ta.value.slice(0, pos) + ins + ta.value.slice(pos);
+        const caret = pos + ins.length;
+        ta.setSelectionRange(caret, caret);
+        ta.focus();
+        await ensurePeople();
+        render('');
+      });
+      document.addEventListener('click', (e) => { if (!form.contains(e.target)) close(); });
+    }
   });
   initComposer(document);
 
