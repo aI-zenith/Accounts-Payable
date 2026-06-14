@@ -564,3 +564,226 @@ body.app {
 .tile--soon { opacity: 0.74; }
 .tile--soon .tile__ic { background: var(--slate-wash); color: var(--ink-muted); }
 .tile .navlink__soon { color: var(--ink-muted); border-color: var(--line-strong); }
+
+/* ---------- team: inline role picker ---------- */
+.rolepick { display: inline-flex; }
+.input--mini {
+  padding: 5px 8px;
+  font-size: 12.5px;
+  border-radius: 6px;
+  width: auto;
+}
+
+/* ---------- roles & permission matrix ---------- */
+.roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
+}
+.rolecard {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+}
+.rolecard--new { border-style: dashed; }
+.rolecard__head { margin-bottom: 14px; }
+.rolecard__name {
+  font-size: 16px;
+  font-weight: 650;
+  padding: 4px 0;
+}
+input.rolecard__name { width: 100%; }
+.rolecard__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.rolecard__count { font-size: 12px; color: var(--ink-muted); }
+
+.permgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+  margin-bottom: 16px;
+}
+.perm {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.perm input[type='checkbox'] { width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--ink); }
+.perm--locked { color: var(--ink-muted); cursor: default; }
+
+.rolecard__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+/* ---------- dashboard: the money machine ---------- */
+.moneyline {
+  background: linear-gradient(180deg, #ffffff, #f7f8fa);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px 18px 14px;
+  margin-bottom: 26px;
+  overflow: hidden;
+  text-align: center;
+}
+.moneyline__cap {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+.mm {
+  position: relative;
+  width: 460px;
+  max-width: 100%;
+  height: 150px;
+  margin: 0 auto;
+}
+
+/* the press (charcoal, echoes the Zenith mark) */
+.mm__press {
+  position: absolute;
+  left: 8px;
+  bottom: 30px;
+  width: 80px;
+  height: 84px;
+  border-radius: 12px;
+  background: linear-gradient(160deg, #3a4150, #1b2027);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 6px 14px rgba(16, 24, 40, 0.18);
+}
+.mm__roller {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(#5b6472 0 30deg, #2b313c 30deg 60deg);
+  box-shadow: inset 0 0 0 4px #20262f;
+  animation: mm-spin 1.3s linear infinite;
+}
+.mm__slot {
+  position: absolute;
+  right: -5px;
+  bottom: 16px;
+  width: 12px;
+  height: 26px;
+  border-radius: 3px;
+  background: #11151b;
+  box-shadow: 0 0 10px 1px rgba(76, 175, 114, 0.55);
+}
+
+/* the conveyor belt + legs */
+.mm__belt {
+  position: absolute;
+  left: 86px;
+  bottom: 46px;
+  width: 300px;
+  height: 16px;
+  border-radius: 9px;
+  background: repeating-linear-gradient(90deg, #2b313c 0 13px, #20252e 13px 26px);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.32), 0 4px 8px rgba(16, 24, 40, 0.14);
+  animation: mm-belt 0.6s linear infinite;
+}
+.mm__legs span {
+  position: absolute;
+  bottom: 24px;
+  width: 6px;
+  height: 24px;
+  border-radius: 3px;
+  background: #c2c8d2;
+}
+.mm__legs span:first-child { left: 120px; }
+.mm__legs span:last-child { left: 344px; }
+
+/* the cash */
+.mm__bills { position: absolute; inset: 0; }
+.bill {
+  position: absolute;
+  left: 92px;
+  bottom: 62px;
+  width: 42px;
+  height: 23px;
+  border-radius: 4px;
+  background: linear-gradient(160deg, #54b97e, #2f7d52);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45), inset 0 0 0 3px rgba(255, 255, 255, 0.12),
+    0 2px 4px rgba(16, 24, 40, 0.2);
+  animation: mm-bill 4s linear infinite;
+  animation-delay: calc(var(--i) * -0.8s);
+}
+.bill::after {
+  content: '$';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* the box */
+.mm__box {
+  position: absolute;
+  right: 38px;
+  bottom: 22px;
+  width: 66px;
+  height: 50px;
+  border-radius: 4px 4px 6px 6px;
+  background: linear-gradient(180deg, #caa06a, #b07f47);
+  box-shadow: inset 0 6px 10px rgba(0, 0, 0, 0.28), 0 5px 10px rgba(16, 24, 40, 0.16);
+}
+.mm__box::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 10px;
+  background: #8c5f33;
+  border-radius: 4px 4px 0 0;
+}
+.mm__flap {
+  position: absolute;
+  top: -12px;
+  left: -4px;
+  width: 30px;
+  height: 14px;
+  background: #d8b07c;
+  border-radius: 3px;
+  transform-origin: bottom right;
+  transform: rotate(-32deg);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+@keyframes mm-spin { to { transform: translateX(-50%) rotate(360deg); } }
+@keyframes mm-belt { to { background-position: -26px 0; } }
+@keyframes mm-bill {
+  0%   { transform: translate(0, 0) rotate(-3deg) scale(0.96); opacity: 0; }
+  7%   { opacity: 1; }
+  68%  { transform: translate(252px, 0) rotate(-3deg) scale(0.96); opacity: 1; }
+  84%  { transform: translate(276px, 24px) rotate(11deg) scale(0.8); opacity: 0.9; }
+  100% { transform: translate(286px, 44px) rotate(18deg) scale(0.5); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm__roller, .mm__belt, .bill { animation: none; }
+  .bill { opacity: 1; }
+  .bill:nth-child(1) { transform: translate(0, 0); }
+  .bill:nth-child(2) { transform: translate(85px, 0); }
+  .bill:nth-child(3) { transform: translate(170px, 0); }
+  .bill:nth-child(4) { transform: translate(248px, 6px) rotate(6deg); }
+  .bill:nth-child(5) { transform: translate(278px, 30px) rotate(14deg) scale(0.7); opacity: 0.6; }
+}

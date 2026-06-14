@@ -24,10 +24,15 @@ provider:
 - **Login/logout:** `/login` issues a database-backed session stored in an
   httpOnly cookie (passwords hashed with scrypt; sessions in the `sessions`
   table).
-- **Team management** (admins, under **Team** in the sidebar): add a member with a
-  password, or leave the password blank to generate a **shareable invite link**
-  shown under that user — they open it to set their own password. Roles are
-  `admin` (full access incl. team management) or `member`.
+- **Team management** (under **Team** in the sidebar, gated by the `team`
+  permission): add a member with a password, or leave it blank to generate a
+  **shareable invite link** shown under that user. Change anyone's role inline.
+- **Roles & permissions** (**Team → Roles**): a role's checked permissions
+  decide which modules a member can see (Accounts Payable, Properties, …, Team,
+  Settings). **Admin** always has everything; **Manager** and **Employee** are
+  seeded, editable starting points, and you can create custom roles. Route
+  access is enforced server-side via `requirePermission(...)`, and the sidebar
+  hides what a role can't reach.
 
 No new secrets are required for auth.
 

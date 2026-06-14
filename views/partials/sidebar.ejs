@@ -34,6 +34,7 @@
     <div class="navgroup">
       <div class="navgroup__label">Modules</div>
 
+      <% if (can('accounts_payable')) { %>
       <a class="navlink <%= apActive ? 'is-active' : '' %>" href="/invoices">
         <svg class="navlink__icon" viewBox="0 0 24 24"><%- ic.ap %></svg>
         Accounts Payable
@@ -44,6 +45,7 @@
           <a class="navsub__link <%= active === 'reconcile' ? 'is-active' : '' %>" href="/reconcile">Reconcile</a>
         </div>
       <% } %>
+      <% } %>
 
       <span class="navlink navlink--soon"><svg class="navlink__icon" viewBox="0 0 24 24"><%- ic.prop %></svg>Properties <span class="navlink__soon">soon</span></span>
       <span class="navlink navlink--soon"><svg class="navlink__icon" viewBox="0 0 24 24"><%- ic.res %></svg>Residents <span class="navlink__soon">soon</span></span>
@@ -52,14 +54,16 @@
       <span class="navlink navlink--soon"><svg class="navlink__icon" viewBox="0 0 24 24"><%- ic.report %></svg>Reports <span class="navlink__soon">soon</span></span>
     </div>
 
+    <% if (can('team') || can('settings')) { %>
     <div class="navgroup">
       <div class="navgroup__label">Workspace</div>
-      <% if (currentUser.role === 'admin') { %>
+      <% if (can('team')) { %>
       <a class="navlink <%= active === 'team' ? 'is-active' : '' %>" href="/team">
         <svg class="navlink__icon" viewBox="0 0 24 24"><%- ic.team %></svg>
         Team
       </a>
       <% } %>
+      <% if (can('settings')) { %>
       <a class="navlink <%= active === 'settings' ? 'is-active' : '' %>" href="/settings">
         <svg class="navlink__icon" viewBox="0 0 24 24"><%- ic.cog %></svg>
         Settings
@@ -69,14 +73,16 @@
           <a class="navsub__link is-active" href="/settings/accounts-payable">Accounts Payable</a>
         </div>
       <% } %>
+      <% } %>
     </div>
+    <% } %>
   </nav>
 
   <div class="sidebar__foot">
     <div class="avatar avatar--accent"><%= initial %></div>
     <div class="usermini">
       <div class="usermini__name"><%= currentUser.name || currentUser.email %></div>
-      <div class="usermini__role"><%= currentUser.role %></div>
+      <div class="usermini__role"><%= currentUser.roleName %></div>
     </div>
     <form method="post" action="/logout">
       <button class="logoutbtn" type="submit" title="Sign out" aria-label="Sign out">

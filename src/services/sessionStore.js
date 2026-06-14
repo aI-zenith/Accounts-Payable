@@ -17,13 +17,16 @@ export async function createSession(userId) {
   return { token, expires };
 }
 
-// Resolve a session token to its (active) user, or null. Sweeps the row if
-// expired.
+// Resolve a session token to its (active) user — with role + permissions — or
+// null. Sweeps the row if expired.
 export async function getSessionUser(token) {
   if (!token) return null;
   const { rows } = await query(
-    `SELECT u.id, u.email, u.name, u.role, u.is_active, s.expires_at
-       FROM sessions s JOIN users u ON u.id = s.user_id
+    `SELECT u.id, u.email, u.name, u.is_active, u.role_id, s.expires_at,
+            r.key AS role_key, r.name AS role_name, r.is_admin, r.permissions
+       FROM sessions s
+       JOIN users u ON u.id = s.user_id
+       LEFT JOIN roles r ON r.id = u.role_id
       WHERE s.token = $1`,
     [token]
   );
@@ -33,7 +36,16 @@ export async function getSessionUser(token) {
     await destroySession(token);
     return null;
   }
-  return { id: row.id, email: row.email, name: row.name, role: row.role };
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    roleId: row.role_id,
+    roleKey: row.role_key || null,
+    roleName: row.role_name || 'No role',
+    isAdmin: Boolean(row.is_admin),
+    permissions: Array.isArray(row.permissions) ? row.permissions : [],
+  };
 }
 
 export async function destroySession(token) {

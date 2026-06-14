@@ -10,12 +10,33 @@
   </div>
 </section>
 
+<section class="moneyline">
+  <div class="mm" aria-hidden="true">
+    <div class="mm__press">
+      <span class="mm__roller"></span>
+      <span class="mm__slot"></span>
+    </div>
+    <div class="mm__belt"></div>
+    <div class="mm__legs"><span></span><span></span></div>
+    <div class="mm__bills">
+      <span class="bill" style="--i:0"></span>
+      <span class="bill" style="--i:1"></span>
+      <span class="bill" style="--i:2"></span>
+      <span class="bill" style="--i:3"></span>
+      <span class="bill" style="--i:4"></span>
+    </div>
+    <div class="mm__box"><span class="mm__flap"></span></div>
+  </div>
+  <p class="moneyline__cap">The AP machine never sleeps — every bill, straight into the box. 💸</p>
+</section>
+
 <section class="page-head">
   <h2 class="settings-section__title">Your workspace</h2>
   <p class="settings-section__sub">Accounts Payable is live. More modules are on the way.</p>
 </section>
 
 <div class="tiles">
+  <% if (can('accounts_payable')) { %>
   <a class="tile tile--ap" href="/invoices">
     <div class="tile__head">
       <span class="tile__ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 4h16v4H4zM4 11h16M4 16h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
@@ -29,6 +50,7 @@
       <span><strong><%= ap.pushed %></strong> pushed</span>
     </div>
   </a>
+  <% } %>
 
   <%
     const soon = [

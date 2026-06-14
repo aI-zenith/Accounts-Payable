@@ -128,6 +128,39 @@ const STATEMENTS = [
      expires_at timestamptz NOT NULL
    )`,
   `CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id)`,
+
+  // --- Roles & permissions -------------------------------------------------
+  // A role defines what a user can see/access (permissions = nav areas). The
+  // Admin role always has everything (is_admin). Manager/Employee are seeded as
+  // editable starting points; admins can edit them or create more.
+  `CREATE TABLE IF NOT EXISTS roles (
+     id          serial PRIMARY KEY,
+     key         text UNIQUE NOT NULL,
+     name        text NOT NULL,
+     permissions jsonb NOT NULL DEFAULT '[]'::jsonb,
+     is_admin    boolean NOT NULL DEFAULT false,
+     is_system   boolean NOT NULL DEFAULT false,
+     created_at  timestamptz DEFAULT now(),
+     updated_at  timestamptz DEFAULT now()
+   )`,
+  `INSERT INTO roles (key, name, permissions, is_admin, is_system)
+     VALUES ('admin', 'Admin', '[]'::jsonb, true, true)
+     ON CONFLICT (key) DO NOTHING`,
+  `INSERT INTO roles (key, name, permissions, is_admin, is_system)
+     VALUES ('manager', 'Manager',
+       '["accounts_payable","properties","residents","leasing","maintenance","reports"]'::jsonb,
+       false, true)
+     ON CONFLICT (key) DO NOTHING`,
+  `INSERT INTO roles (key, name, permissions, is_admin, is_system)
+     VALUES ('employee', 'Employee', '["accounts_payable"]'::jsonb, false, true)
+     ON CONFLICT (key) DO NOTHING`,
+
+  // Link users to a role; backfill from the legacy text role.
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS role_id int REFERENCES roles(id)`,
+  `UPDATE users SET role_id = (SELECT id FROM roles WHERE key = 'admin')
+     WHERE role_id IS NULL AND role = 'admin'`,
+  `UPDATE users SET role_id = (SELECT id FROM roles WHERE key = 'employee')
+     WHERE role_id IS NULL`,
 ];
 
 export async function runMigrations() {

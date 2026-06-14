@@ -18,8 +18,15 @@ export function parseCookies(req, res, next) {
   next();
 }
 
-// Resolve the session cookie to a user and expose it to handlers + views.
-// Non-blocking: unauthenticated requests simply have no user.
+// Does this user have a permission? Admins implicitly have all of them.
+export function userCan(user, perm) {
+  if (!user) return false;
+  if (user.isAdmin) return true;
+  return Array.isArray(user.permissions) && user.permissions.includes(perm);
+}
+
+// Resolve the session cookie to a user and expose it (plus a `can` helper) to
+// handlers + views. Non-blocking: unauthenticated requests simply have no user.
 export async function attachUser(req, res, next) {
   try {
     const token = req.cookies?.[SESSION_COOKIE];
@@ -29,6 +36,7 @@ export async function attachUser(req, res, next) {
     req.user = null;
   }
   res.locals.currentUser = req.user;
+  res.locals.can = (perm) => userCan(req.user, perm);
   next();
 }
 
@@ -45,11 +53,23 @@ export function requireAuth(req, res, next) {
     .catch(() => res.redirect('/login'));
 }
 
+// Gate a route group on a permission (admins always pass).
+export function requirePermission(perm) {
+  return (req, res, next) => {
+    if (userCan(req.user, perm)) return next();
+    res.status(403).render('error', {
+      title: 'Not allowed',
+      status: 403,
+      message: 'You don’t have access to this area. Ask an administrator to adjust your role.',
+    });
+  };
+}
+
 export function requireAdmin(req, res, next) {
-  if (req.user && req.user.role === 'admin') return next();
+  if (req.user && req.user.isAdmin) return next();
   res.status(403).render('error', {
     title: 'Not allowed',
     status: 403,
-    message: 'You need an administrator account to manage the team.',
+    message: 'You need an administrator account for this.',
   });
 }
