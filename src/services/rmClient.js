@@ -364,29 +364,41 @@ export async function createCreditCardTransaction(payload) {
 }
 
 /**
- * Attach a receipt file to a credit card transaction (FileAttachmentModel).
+ * Attach a receipt file to the created record (FileAttachments/Save).
  * Called as a separate, non-fatal step so a failure never undoes the
  * already-created transaction. Returns the new attachment/file id.
+ *
+ * Per the WAPI FileAttachments/Save spec (confirmed against a live 500):
+ *   - URL:  POST /Invoices/{id}/FileAttachments  ({id} = the transaction id,
+ *           which doubles as the Invoice/Transaction id).
+ *   - Body: an ARRAY of FileAttachment objects — a bare object 500s with
+ *           "issue retrieving data from the database".
+ *   - EntityType is the eFileAttachmentRelatedObjectTypes enum ("Invoice") and
+ *     EntityKeyID is that same record id; both must be set or RM can't associate
+ *     the record.
+ *   - The nested File is REQUIRED on create; its Content is a Byte[] carried as
+ *     base64 in JSON. RM creates the File and back-fills FileID automatically.
  */
 export async function attachReceipt(transactionId, fileBuffer, filename) {
   const base64 = Buffer.isBuffer(fileBuffer) ? fileBuffer.toString('base64') : String(fileBuffer);
   const name = filename || 'receipt.pdf';
-  const ext = (name.includes('.') ? name.split('.').pop() : 'pdf').toLowerCase();
+  const dot = name.lastIndexOf('.');
+  const ext = (dot >= 0 ? name.slice(dot + 1) : 'pdf').toLowerCase();
 
-  // Attachments are a sub-collection of the transaction; the parent is implied
-  // by the URL. The File (FileModel) is required on create.
-  const payload = {
-    EntityType: 'CreditCardTransaction',
-    EntityKeyID: Number(transactionId),
-    Description: name,
-    File: {
-      Name: name,
-      Extension: ext,
-      // FileModel stores the bytes in Content (Byte[]); JSON carries it as base64.
-      Content: base64,
+  const payload = [
+    {
+      EntityType: 'Invoice',
+      EntityKeyID: Number(transactionId),
+      Description: name,
+      File: {
+        Name: name,
+        Extension: ext,
+        // FileModel stores the bytes in Content (Byte[]); JSON carries it as base64.
+        Content: base64,
+      },
     },
-  };
-  const { body, location } = await request(`/CreditCardTransactions/${transactionId}/Attachments`, {
+  ];
+  const { body, location } = await request(`/Invoices/${transactionId}/FileAttachments`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
