@@ -10,6 +10,7 @@ import {
   createVendor,
   findPropertyByName,
   createCreditCardTransaction,
+  attachReceipt,
   listExpenseGLAccounts,
 } from '../services/rmClient.js';
 
@@ -338,7 +339,6 @@ function buildCreditCardTransaction({ card, vendor, property, glAccountId, d }) 
     PropertyID: property.PropertyID ?? property.ID,
     GLAccountID: glAccountId,
     Amount: amount,
-    Memo: (d.invoice_number || memoFrom(d) || '').slice(0, 250),
   };
   return {
     CreditCardID: card.CreditCardID ?? card.ID,
@@ -346,7 +346,6 @@ function buildCreditCardTransaction({ card, vendor, property, glAccountId, d }) 
     AccountType: 'Vendor',
     TransactionDate: normalizeDate(d.invoice_date) || new Date().toISOString().slice(0, 10),
     Reference: d.invoice_number || '',
-    Comment: memoFrom(d),
     CreditCardTransactionDetails: [detail],
   };
 }
@@ -422,7 +421,25 @@ async function pushInvoice(inv) {
       "UPDATE invoices SET status = 'pushed', rm_project_id = $2, error_msg = NULL, updated_at = now() WHERE id = $1",
       [inv.id, txnId != null ? String(txnId) : null]
     );
-    return { ok: true, status: 'pushed', message: `Credit card transaction ${txnId ?? 'created'}.` };
+
+    // 6) Attach the receipt PDF — non-fatal: never undo a created transaction.
+    let attachNote = '';
+    try {
+      const { rows: fr } = await query('SELECT file_data FROM invoices WHERE id = $1', [inv.id]);
+      const fileData = fr[0] && fr[0].file_data;
+      if (fileData && txnId != null) {
+        const attId = await attachReceipt(txnId, fileData, inv.original_name);
+        await query('UPDATE invoices SET rm_attachment_id = $2 WHERE id = $1', [
+          inv.id,
+          attId != null ? String(attId) : null,
+        ]);
+      }
+    } catch (err) {
+      console.error(`[invoices] attach failed for #${inv.id}:`, err.message);
+      attachNote = ` (receipt attach failed: ${err.message.slice(0, 140)})`;
+    }
+
+    return { ok: true, status: 'pushed', message: `Credit card transaction ${txnId ?? 'created'}.${attachNote}` };
   } catch (err) {
     console.error(`[invoices] push failed for #${inv.id}:`, err.message);
     const msg = `Push failed: ${err.message}`;

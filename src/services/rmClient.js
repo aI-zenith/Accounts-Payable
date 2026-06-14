@@ -253,6 +253,25 @@ export async function createCreditCardTransaction(payload) {
   );
 }
 
+/**
+ * Attach a receipt file to a credit card transaction (FileAttachmentModel).
+ * Called as a separate, non-fatal step so a failure never undoes the
+ * already-created transaction. Returns the new attachment/file id.
+ */
+export async function attachReceipt(transactionId, fileBuffer, filename) {
+  const base64 = Buffer.isBuffer(fileBuffer) ? fileBuffer.toString('base64') : String(fileBuffer);
+  const payload = {
+    Name: filename || 'receipt.pdf',
+    File: base64,
+    IsActive: true,
+  };
+  const { body, location } = await request(`/CreditCardTransactions/${transactionId}/Attachments`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return (body && (body.FileID || body.AttachmentID || body.ID)) || idFromLocation(location);
+}
+
 // Test-only helper used by the Settings connection test.
 export async function testAuthentication() {
   const token = await authenticate();
