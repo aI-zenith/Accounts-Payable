@@ -3,7 +3,7 @@ import multer from 'multer';
 import * as Tasks from '../services/tasks.js';
 import { addReminder } from '../services/reminders.js';
 import { listUsers } from '../services/users.js';
-import { searchRmEntities } from '../services/rmClient.js';
+import { searchRmEntities, searchAllEntities } from '../services/rmClient.js';
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -165,7 +165,12 @@ router.get(
   '/link-search',
   wrap(async (req, res) => {
     try {
-      const results = await searchRmEntities(req.query.type, req.query.q || '');
+      const type = req.query.type;
+      const q = req.query.q || '';
+      // A specific type narrows the search; otherwise search every type at once.
+      const results = Tasks.LINK_TYPES.includes(type)
+        ? (await searchRmEntities(type, q)).map((r) => ({ ...r, type }))
+        : await searchAllEntities(q);
       res.json({ ok: true, results });
     } catch (err) {
       res.json({ ok: false, error: err.message, results: [] });

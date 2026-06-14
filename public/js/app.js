@@ -352,14 +352,18 @@
     const linkName = document.getElementById('linkName');
     const linkId = document.getElementById('linkId');
     let timer;
+    const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
     const doSearch = () => {
-      const type = linkType.value;
       const q = linkSearch.value.trim();
-      if (!type || q.length < 2) {
+      if (q.length < 2) {
         linkResults.hidden = true;
         return;
       }
-      fetch('/tasks/link-search?type=' + encodeURIComponent(type) + '&q=' + encodeURIComponent(q))
+      // Search regardless of the Type dropdown: a chosen type narrows it,
+      // otherwise we search every record type at once.
+      const type = linkType.value;
+      const url = '/tasks/link-search?q=' + encodeURIComponent(q) + (type ? '&type=' + encodeURIComponent(type) : '');
+      fetch(url)
         .then((r) => r.json())
         .then((d) => {
           const items = d.results || [];
@@ -368,11 +372,11 @@
           linkResults.innerHTML = items.length
             ? items
                 .map((x) => {
-                  const meta = [x.email, x.phone, x.unit && 'Unit ' + x.unit, x.property && 'Property ' + x.property]
+                  const meta = [cap(x.type), x.email, x.phone, x.unit && 'Unit ' + x.unit, x.property && 'Property ' + x.property]
                     .filter(Boolean)
                     .join(' · ');
                   return (
-                    '<button type="button" data-id="' + escAttr(x.id) + '" data-name="' + escAttr(x.name) + '">' +
+                    '<button type="button" data-id="' + escAttr(x.id) + '" data-name="' + escAttr(x.name) + '" data-type="' + escAttr(x.type || '') + '">' +
                     escHtml(x.name) +
                     (meta ? '<span class="linkmeta">' + escHtml(meta) + '</span>' : '') +
                     '</button>'
@@ -388,9 +392,13 @@
       clearTimeout(timer);
       timer = setTimeout(doSearch, 300);
     });
+    // Changing the type narrows an existing search.
+    linkType.addEventListener('change', doSearch);
     linkResults.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-id]');
       if (!b) return;
+      const t = b.getAttribute('data-type');
+      if (t) linkType.value = t; // set the Type from the chosen record
       if (linkName) linkName.value = b.getAttribute('data-name');
       if (linkId) linkId.value = b.getAttribute('data-id');
       linkResults.hidden = true;

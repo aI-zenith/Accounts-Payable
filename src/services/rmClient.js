@@ -623,6 +623,19 @@ export async function searchRmEntities(type, q) {
   }
 }
 
+// Search every linkable record type at once and tag each result with its type.
+// One type failing never blocks the others.
+export async function searchAllEntities(q) {
+  const types = ['tenant', 'owner', 'prospect', 'vendor'];
+  const settled = await Promise.allSettled(types.map((t) => searchRmEntities(t, q)));
+  const out = [];
+  settled.forEach((s, i) => {
+    if (s.status === 'fulfilled') for (const r of s.value) out.push({ ...r, type: types[i] });
+  });
+  out.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return out.slice(0, 40);
+}
+
 // Test-only helper used by the Settings connection test.
 export async function testAuthentication() {
   const token = await authenticate();
