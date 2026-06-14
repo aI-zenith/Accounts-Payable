@@ -16,6 +16,7 @@ import {
   findPropertyForCreditCard,
   jobMatchesPropertyOrUnit,
   createCreditCardTransaction,
+  attachInvoiceFile,
 } from './rmClient.js';
 
 function normalizeDate(v) {
@@ -112,6 +113,36 @@ export async function pushInvoiceToRentManager(inv) {
     const payload = buildCreditCardTransaction({ card, vendor, property, d });
     const txnId = await createCreditCardTransaction(payload);
 
+    // 5) Attach the original PDF to the created record. This is best-effort and
+    //    deliberately NON-FATAL: the transaction already exists, so a failed
+    //    attach must never flip the row to a state that would re-push (and thus
+    //    double-charge). We record the attachment id on success and surface a
+    //    note on failure so it can be retried by hand.
+    let attachmentNote = '';
+    try {
+      const { rows } = await query(
+        'SELECT file_data, original_name FROM invoices WHERE id = $1',
+        [inv.id]
+      );
+      const file = rows[0];
+      if (file?.file_data && txnId != null) {
+        const attachmentId = await attachInvoiceFile(txnId, {
+          filename: file.original_name || `invoice-${inv.id}.pdf`,
+          content: file.file_data,
+          description: d.invoice_number ? `Invoice ${d.invoice_number}` : 'Receipt',
+        });
+        await query('UPDATE invoices SET rm_attachment_id = $2 WHERE id = $1', [
+          inv.id,
+          attachmentId != null ? String(attachmentId) : null,
+        ]);
+      } else if (txnId == null) {
+        attachmentNote = ' (no transaction id returned, so the PDF was not attached)';
+      }
+    } catch (err) {
+      console.error(`[push] attach failed for #${inv.id} (txn ${txnId}):`, err.message);
+      attachmentNote = ` (transaction created, but attaching the PDF failed: ${err.message})`;
+    }
+
     await query(
       "UPDATE invoices SET status = 'pushed', rm_project_id = $2, updated_at = now() WHERE id = $1",
       [inv.id, txnId != null ? String(txnId) : null]
@@ -120,7 +151,7 @@ export async function pushInvoiceToRentManager(inv) {
       ok: true,
       status: 'pushed',
       txnId,
-      message: `Pushed to Rent Manager — credit card transaction ${txnId ?? 'created'}.`,
+      message: `Pushed to Rent Manager — credit card transaction ${txnId ?? 'created'}.${attachmentNote}`,
     };
   } catch (err) {
     console.error(`[push] failed for #${inv.id}:`, err.message);

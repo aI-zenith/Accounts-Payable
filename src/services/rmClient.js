@@ -343,6 +343,54 @@ export async function createCreditCardTransaction(payload) {
   );
 }
 
+/**
+ * Attach a PDF to a Rent Manager record as a FileAttachment.
+ *
+ * Per the WAPI FileAttachments/Save spec:
+ *   - URL:  POST /Invoices/{id}/FileAttachments        ({id} = the transaction/invoice id)
+ *   - Body: an ARRAY of FileAttachment objects (a bare object 500s).
+ *   - EntityType is the eFileAttachmentRelatedObjectTypes enum ("Invoice"), and
+ *     EntityKeyID is that same record id — both must be set or RM can't associate
+ *     the record ("issue retrieving data from the database").
+ *   - The nested File is REQUIRED on create; its Content is a Byte[] carried as
+ *     base64 in JSON. RM creates the File and back-fills FileID automatically.
+ *
+ * @param {number} recordId   the invoice/transaction id (URL path + EntityKeyID)
+ * @param {{ filename?:string, content:Buffer|Uint8Array|string, description?:string }} file
+ * @returns {Promise<number|null>} the new FileAttachmentID
+ */
+export async function attachInvoiceFile(recordId, { filename, content, description } = {}) {
+  if (recordId == null) throw new Error('attachInvoiceFile: a record id is required.');
+  if (!content) throw new Error('attachInvoiceFile: file content is required.');
+
+  const name = filename || `attachment-${recordId}.pdf`;
+  const dot = name.lastIndexOf('.');
+  const extension = (dot >= 0 ? name.slice(dot + 1) : 'pdf').toLowerCase();
+  const base64 = Buffer.isBuffer(content)
+    ? content.toString('base64')
+    : Buffer.from(content).toString('base64');
+
+  const payload = [
+    {
+      EntityType: 'Invoice',
+      EntityKeyID: recordId,
+      Description: description || name,
+      File: {
+        Name: name,
+        Extension: extension,
+        Content: base64,
+      },
+    },
+  ];
+
+  const { body, location } = await request(`/Invoices/${recordId}/FileAttachments`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  const rec = Array.isArray(body) ? body[0] : body;
+  return (rec && (rec.FileAttachmentID || rec.ID)) || idFromLocation(location);
+}
+
 // Test-only helper used by the Settings connection test.
 export async function testAuthentication() {
   const token = await authenticate();

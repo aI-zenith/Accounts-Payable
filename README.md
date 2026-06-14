@@ -73,6 +73,14 @@ resolves the credit card, vendor, and property, then `POST`s a
 - `jobMatchesPropertyOrUnit` — the second-step check against the property's
   units (`/Units?filter=PropertyID,eq,…`, falling back to `?embeds=Units`).
 
+After the transaction is created, the original PDF is attached via
+`attachInvoiceFile` — `POST /Invoices/{id}/FileAttachments` with an array body,
+`EntityType: "Invoice"`, `EntityKeyID` = the record id, and a nested `File`
+whose `Content` is the base64 bytes (per the WAPI FileAttachments/Save spec).
+The attach is best-effort and non-fatal: the transaction already exists, so a
+failed attach is surfaced as a note rather than re-pushed (which would
+double-charge). The new `FileAttachmentID` is saved to `rm_attachment_id`.
+
 The property/GL **allocation** child structure on the transaction is the one
 remaining discovery item (marked `TODO(property)` in `buildCreditCardTransaction`);
 the verified property is already resolved and ready to attach once its shape is
