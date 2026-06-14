@@ -164,6 +164,28 @@ router.post(
   })
 );
 
+// --- POST /settings/test/tenants : verify the RM tenant feed --------------
+router.post(
+  '/settings/test/tenants',
+  wrap(async (req, res) => {
+    try {
+      const { rm } = await getCredentials();
+      if (!rm.baseUrl || !rm.username || !rm.password) {
+        return res.json({
+          ok: false,
+          message: 'Rent Manager credentials are not configured (Settings → Accounts Payable).',
+        });
+      }
+      const { body } = await request('/Tenants?fields=TenantID,Name&pageSize=3');
+      const sample = Array.isArray(body) ? body.length : body ? 1 : 0;
+      const example = Array.isArray(body) && body[0] && body[0].Name ? ` e.g. “${body[0].Name}”.` : '';
+      res.json({ ok: true, message: `Connected — tenant feed is live (read ${sample} sample tenant(s)).${example}` });
+    } catch (err) {
+      res.json({ ok: false, message: `Tenant feed failed: ${err.message}` });
+    }
+  })
+);
+
 // --- Credit card mappings (last-4 -> RM card) ------------------------------
 router.post(
   '/settings/card-mappings',
