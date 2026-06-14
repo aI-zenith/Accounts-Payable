@@ -96,10 +96,21 @@ export async function listTasks(viewer, f = {}) {
   const sortCol = SORTABLE[f.sort] || 't.due_at';
   const dir = f.dir === 'desc' ? 'DESC' : 'ASC';
   const { rows } = await query(
-    `SELECT t.* FROM tasks t WHERE ${where.join(' AND ')}
+    `SELECT t.*,
+            (SELECT count(*) FROM task_subtasks s WHERE s.task_id = t.id) AS sub_total,
+            (SELECT count(*) FROM task_subtasks s WHERE s.task_id = t.id AND s.done) AS sub_done,
+            (SELECT count(*) FROM task_comments c WHERE c.task_id = t.id) AS comment_count,
+            (SELECT count(*) FROM task_attachments a WHERE a.task_id = t.id) AS attach_count
+       FROM tasks t WHERE ${where.join(' AND ')}
        ORDER BY ${sortCol} ${dir} NULLS LAST, t.created_at DESC`,
     params
   );
+  for (const r of rows) {
+    r.sub_total = Number(r.sub_total) || 0;
+    r.sub_done = Number(r.sub_done) || 0;
+    r.comment_count = Number(r.comment_count) || 0;
+    r.attach_count = Number(r.attach_count) || 0;
+  }
   return withAssignees(rows);
 }
 

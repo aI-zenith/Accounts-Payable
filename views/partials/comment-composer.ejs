@@ -20,6 +20,7 @@
     <input type="file" name="file" hidden data-file />
     <input type="hidden" name="kind" value="file" data-kind />
     <input type="hidden" name="duration" data-duration />
+    <% if (typeof back !== 'undefined' && back) { %><input type="hidden" name="back" value="<%= back %>" /><% } %>
 
     <div class="tkcc__tools">
       <button type="button" class="tkcc__tool" data-attach title="Attach a file">
