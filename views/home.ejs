@@ -16,6 +16,7 @@
 </section>
 
 <div class="tiles">
+  <% if (can('accounts_payable')) { %>
   <a class="tile tile--ap" href="/invoices">
     <div class="tile__head">
       <span class="tile__ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 4h16v4H4zM4 11h16M4 16h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
@@ -29,6 +30,7 @@
       <span><strong><%= ap.pushed %></strong> pushed</span>
     </div>
   </a>
+  <% } %>
 
   <%
     const soon = [

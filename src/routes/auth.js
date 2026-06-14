@@ -54,7 +54,7 @@ router.post(
     if (String(password).length < 8) return fail('Password must be at least 8 characters.');
     if (password !== confirm) return fail('Passwords do not match.');
     try {
-      const user = await createUser({ email, name, role: 'admin', password });
+      const user = await createUser({ email, name, roleKey: 'admin', password });
       await startSession(res, user.id);
       res.redirect('/');
     } catch (err) {

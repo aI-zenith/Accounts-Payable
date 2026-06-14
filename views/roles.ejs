@@ -1,0 +1,73 @@
+<section class="page-head">
+  <h1 class="page-title">Roles</h1>
+  <p class="page-sub">A role controls what its members can see. Check a box to grant access; the Admin role always has everything.</p>
+</section>
+
+<%- include('partials/team-nav') %>
+
+<% if (error) { %><div class="notice notice--err"><%= error %></div><% } %>
+
+<div class="roles">
+  <% roles.forEach((role) => {
+       const perms = Array.isArray(role.permissions) ? role.permissions : [];
+       const locked = role.is_admin;
+  %>
+    <section class="rolecard">
+      <form method="post" action="/team/roles/<%= role.id %>">
+        <header class="rolecard__head">
+          <div class="rolecard__title">
+            <% if (locked) { %>
+              <span class="rolecard__name"><%= role.name %></span>
+            <% } else { %>
+              <input class="input input--bare rolecard__name" name="name" value="<%= role.name %>" aria-label="Role name" />
+            <% } %>
+            <div class="rolecard__meta">
+              <% if (role.is_admin) { %><span class="pill pill--pushed">all access</span><% } %>
+              <% if (role.is_system) { %><span class="pill pill--slate">built-in</span><% } %>
+              <span class="rolecard__count"><%= role.user_count %> member<%= role.user_count === 1 ? '' : 's' %></span>
+            </div>
+          </div>
+        </header>
+
+        <div class="permgrid">
+          <% permissions.forEach((p) => { const on = locked || perms.includes(p.key); %>
+            <label class="perm <%= locked ? 'perm--locked' : '' %>">
+              <input type="checkbox" name="permissions" value="<%= p.key %>" <%= on ? 'checked' : '' %> <%= locked ? 'disabled' : '' %> />
+              <span><%= p.label %></span>
+            </label>
+          <% }) %>
+        </div>
+
+        <% if (!locked) { %>
+          <div class="rolecard__actions">
+            <button class="btn btn--primary btn--sm" type="submit">Save changes</button>
+            <% if (!role.is_system) { %>
+              <button class="linkbtn linkbtn--danger" type="submit" formaction="/team/roles/<%= role.id %>/delete"
+                      onclick="return confirm('Delete the “<%= role.name %>” role?');">Delete role</button>
+            <% } %>
+          </div>
+        <% } %>
+      </form>
+    </section>
+  <% }) %>
+
+  <!-- Create a role -->
+  <section class="rolecard rolecard--new">
+    <form method="post" action="/team/roles">
+      <header class="rolecard__head">
+        <input class="input rolecard__name" name="name" placeholder="New role name" required />
+      </header>
+      <div class="permgrid">
+        <% permissions.forEach((p) => { %>
+          <label class="perm">
+            <input type="checkbox" name="permissions" value="<%= p.key %>" />
+            <span><%= p.label %></span>
+          </label>
+        <% }) %>
+      </div>
+      <div class="rolecard__actions">
+        <button class="btn btn--primary btn--sm" type="submit">Create role</button>
+      </div>
+    </form>
+  </section>
+</div>

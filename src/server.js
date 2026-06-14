@@ -10,7 +10,7 @@ import settingsRoutes from './routes/settings.js';
 import reconcileRoutes from './routes/reconcile.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
-import { parseCookies, attachUser, requireAuth, requireAdmin } from './middleware/auth.js';
+import { parseCookies, attachUser, requireAuth, requirePermission } from './middleware/auth.js';
 import { warmToken } from './services/rmClient.js';
 import { startEmailPoller } from './services/emailPoller.js';
 import { runMigrations } from './db/migrate.js';
@@ -59,11 +59,22 @@ app.use('/', authRoutes);
 
 // Everything below requires a signed-in user.
 app.use(requireAuth);
+
+// Home dashboard — available to every signed-in user.
 app.use('/', homeRoutes);
+
+// Module routes, each gated by the matching permission (admins always pass).
+app.use(
+  ['/invoices', '/upload', '/invoice', '/file', '/push-all', '/reconcile'],
+  requirePermission('accounts_payable')
+);
 app.use('/', invoiceRoutes);
-app.use('/', settingsRoutes);
 app.use('/', reconcileRoutes);
-app.use('/team', requireAdmin, userRoutes);
+
+app.use('/settings', requirePermission('settings'));
+app.use('/', settingsRoutes);
+
+app.use('/team', requirePermission('team'), userRoutes);
 
 // 404.
 app.use((req, res) => {

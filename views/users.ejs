@@ -1,7 +1,9 @@
 <section class="page-head">
   <h1 class="page-title">Team</h1>
-  <p class="page-sub">Invite teammates with a shareable link, or add them with a password. Admins can manage every module.</p>
+  <p class="page-sub">Invite teammates, set what each person can see with roles, and change roles any time.</p>
 </section>
+
+<%- include('partials/team-nav') %>
 
 <% if (error) { %><div class="notice notice--err"><%= error %></div><% } %>
 
@@ -21,9 +23,10 @@
       <div class="fieldrow">
         <label class="field">
           <span class="field__label">Role</span>
-          <select class="input" name="role">
-            <option value="member">Member</option>
-            <option value="admin">Admin</option>
+          <select class="input" name="role_id">
+            <% roles.forEach((r) => { %>
+              <option value="<%= r.id %>" <%= r.key === 'employee' ? 'selected' : '' %>><%= r.name %></option>
+            <% }) %>
           </select>
         </label>
         <label class="field">
@@ -32,7 +35,7 @@
         </label>
       </div>
       <button class="btn btn--primary" type="submit">Add member</button>
-      <p class="hint">Leave the password blank to generate an invite link they can use to set their own.</p>
+      <p class="hint">Leave the password blank to generate an invite link they use to set their own. The role controls what they can see.</p>
     </form>
   </section>
 
@@ -53,11 +56,22 @@
             </div>
           </div>
           <div class="useritem__meta">
-            <span class="pill <%= u.role === 'admin' ? 'pill--pushed' : 'pill--slate' %>"><%= u.role %></span>
             <% if (u.has_password) { %>
               <span class="pill pill--ok">active</span>
             <% } else { %>
               <span class="pill pill--review">invited</span>
+            <% } %>
+            <% if (isMe) { %>
+              <span class="pill <%= u.role_is_admin ? 'pill--pushed' : 'pill--slate' %>"><%= u.role_name %></span>
+            <% } else { %>
+              <form method="post" action="/team/<%= u.id %>/role" class="rolepick">
+                <select class="input input--mini" name="role_id" data-autosubmit aria-label="Role for <%= u.email %>">
+                  <% roles.forEach((r) => { %>
+                    <option value="<%= r.id %>" <%= r.id === u.role_id ? 'selected' : '' %>><%= r.name %></option>
+                  <% }) %>
+                </select>
+                <noscript><button class="btn btn--ghost btn--sm" type="submit">Set</button></noscript>
+              </form>
             <% } %>
           </div>
           <div class="useritem__actions">
@@ -76,14 +90,6 @@
               <button class="btn btn--ghost btn--sm" type="button" data-copy-btn>Copy</button>
               <form method="post" action="/team/<%= u.id %>/reinvite">
                 <button class="linkbtn" type="submit">New link</button>
-              </form>
-            </div>
-          <% } else { %>
-            <div class="invitebar invitebar--muted">
-              <span class="invitebar__label">Invite</span>
-              <span class="hint" style="flex:1">Active account — no pending invite.</span>
-              <form method="post" action="/team/<%= u.id %>/reinvite">
-                <button class="linkbtn" type="submit">Create reset link</button>
               </form>
             </div>
           <% } %>

@@ -150,6 +150,13 @@
     });
   });
 
+  // ---- auto-submit selects (e.g. inline role change) ----
+  document.querySelectorAll('select[data-autosubmit]').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      if (sel.form) sel.form.submit();
+    });
+  });
+
   // ---- copy invite link to clipboard ----
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-copy-btn]');

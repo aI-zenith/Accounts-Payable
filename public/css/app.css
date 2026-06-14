@@ -564,3 +564,66 @@ body.app {
 .tile--soon { opacity: 0.74; }
 .tile--soon .tile__ic { background: var(--slate-wash); color: var(--ink-muted); }
 .tile .navlink__soon { color: var(--ink-muted); border-color: var(--line-strong); }
+
+/* ---------- team: inline role picker ---------- */
+.rolepick { display: inline-flex; }
+.input--mini {
+  padding: 5px 8px;
+  font-size: 12.5px;
+  border-radius: 6px;
+  width: auto;
+}
+
+/* ---------- roles & permission matrix ---------- */
+.roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
+}
+.rolecard {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+}
+.rolecard--new { border-style: dashed; }
+.rolecard__head { margin-bottom: 14px; }
+.rolecard__name {
+  font-size: 16px;
+  font-weight: 650;
+  padding: 4px 0;
+}
+input.rolecard__name { width: 100%; }
+.rolecard__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.rolecard__count { font-size: 12px; color: var(--ink-muted); }
+
+.permgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+  margin-bottom: 16px;
+}
+.perm {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.perm input[type='checkbox'] { width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--ink); }
+.perm--locked { color: var(--ink-muted); cursor: default; }
+
+.rolecard__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
