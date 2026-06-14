@@ -70,6 +70,7 @@ async function loadSettingsView() {
 const SETTINGS_MODULES = [
   { key: 'accounts-payable', label: 'Accounts Payable', href: '/settings/accounts-payable', available: true },
   { key: 'tasks', label: 'Tasks', href: '/settings/tasks', available: true },
+  { key: 'mobile', label: 'Mobile App', href: '/settings/mobile', available: true },
   { key: 'properties', label: 'Properties', available: false },
   { key: 'residents', label: 'Residents', available: false },
   { key: 'leasing', label: 'Leasing', available: false },
@@ -163,6 +164,17 @@ router.post(
     res.redirect('/settings/tasks?notice=' + encodeURIComponent('Category removed.'));
   })
 );
+
+// --- GET /settings/mobile : install the app on a phone ---------------------
+router.get('/settings/mobile', (req, res) => {
+  res.render('settings-mobile', {
+    title: 'Settings · Mobile App',
+    active: 'settings',
+    settingsNav: SETTINGS_MODULES,
+    settingsActive: 'mobile',
+    notice: req.query.notice || null,
+  });
+});
 
 // --- POST /settings/test/tenants : verify the RM tenant feed --------------
 router.post(

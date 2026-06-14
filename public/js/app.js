@@ -2,6 +2,44 @@
 (function () {
   'use strict';
 
+  // ---- PWA: register the service worker + capture the install prompt ----
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  }
+  const isStandalone = () =>
+    window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  let deferredInstall = null;
+  if (isStandalone()) document.documentElement.classList.add('pwa-installed');
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstall = e;
+    document.documentElement.classList.add('pwa-installable');
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstall = null;
+    document.documentElement.classList.remove('pwa-installable');
+    document.documentElement.classList.add('pwa-installed');
+  });
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-install-app]');
+    if (!btn) return;
+    e.preventDefault();
+    const note = document.querySelector('[data-install-note]');
+    if (deferredInstall) {
+      deferredInstall.prompt();
+      const { outcome } = await deferredInstall.userChoice;
+      deferredInstall = null;
+      if (note) note.textContent = outcome === 'accepted' ? 'Installing…' : 'Installation dismissed.';
+    } else if (isStandalone()) {
+      if (note) note.textContent = 'The app is already installed.';
+    } else if (note) {
+      const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+      note.textContent = ios
+        ? 'In Safari: tap the Share button, then “Add to Home Screen”.'
+        : 'Open your browser menu and choose “Install app” / “Add to Home Screen”.';
+    }
+  });
+
   // ---- upload: drag-drop + browse + chosen-file display ----
   const zone = document.getElementById('dropzone');
   if (zone) {

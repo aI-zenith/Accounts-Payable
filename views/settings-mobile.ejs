@@ -1,0 +1,61 @@
+<section class="page-head">
+  <h1 class="page-title">Settings</h1>
+  <p class="page-sub">Configuration is grouped by module.</p>
+</section>
+
+<%- include('partials/settings-nav') %>
+
+<section class="settings-section">
+  <h2 class="settings-section__title">Mobile App</h2>
+  <p class="settings-section__sub">Install Zenith Group on your phone or desktop — it runs full-screen like a native app, works offline for the basics, and lives on your home screen.</p>
+</section>
+
+<div class="grid-2">
+  <section class="card install-card">
+    <div class="install-card__head">
+      <img class="install-card__icon" src="/img/icon-192.png" alt="Zenith app icon" width="64" height="64" />
+      <div>
+        <h2 class="card__h" style="margin:0">Zenith Group</h2>
+        <p class="hint" style="margin:2px 0 0">Group · Operations</p>
+      </div>
+    </div>
+
+    <p class="install-card__installed" data-when-installed>✓ The app is installed on this device. Open it from your home screen.</p>
+
+    <button class="btn btn--primary install-card__btn" type="button" data-install-app>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="margin-right:8px"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Install app
+    </button>
+    <p class="hint install-card__note" data-install-note>Tap “Install app”. If nothing happens, your browser may install from its own menu — see the steps on the right.</p>
+  </section>
+
+  <section class="card">
+    <h2 class="card__h">How to install</h2>
+
+    <div class="howto">
+      <div class="howto__os">iPhone &amp; iPad (Safari)</div>
+      <ol class="howto__steps">
+        <li>Open this site in <strong>Safari</strong>.</li>
+        <li>Tap the <strong>Share</strong> button <span class="kbdmini">↑</span> at the bottom.</li>
+        <li>Choose <strong>Add to Home Screen</strong>, then <strong>Add</strong>.</li>
+      </ol>
+    </div>
+
+    <div class="howto">
+      <div class="howto__os">Android (Chrome)</div>
+      <ol class="howto__steps">
+        <li>Tap <strong>Install app</strong> above, or open the <strong>⋮</strong> menu.</li>
+        <li>Choose <strong>Install app</strong> / <strong>Add to Home screen</strong>.</li>
+        <li>Confirm — Zenith appears with your other apps.</li>
+      </ol>
+    </div>
+
+    <div class="howto">
+      <div class="howto__os">Desktop (Chrome / Edge)</div>
+      <ol class="howto__steps">
+        <li>Click the <strong>install</strong> icon <span class="kbdmini">⊕</span> in the address bar.</li>
+        <li>Or use <strong>Install app</strong> above.</li>
+      </ol>
+    </div>
+  </section>
+</div>
