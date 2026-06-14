@@ -87,9 +87,10 @@ router.get(
   wrap(async (req, res) => {
     const seg = ['all', 'mine', 'unassigned'].includes(req.query.seg) ? req.query.seg : 'all';
     const q = req.query.q || '';
-    const tab = ['overview', 'comments', 'checklist', 'files', 'activity'].includes(req.query.tab)
+    // Inbox is Conversation-first (no Overview tab); fall back to comments.
+    const tab = ['comments', 'conversation', 'checklist', 'files', 'activity'].includes(req.query.tab)
       ? req.query.tab
-      : 'overview';
+      : 'comments';
     const groups = await Tasks.groupInbox(req.user, { seg, q });
     const flat = [...groups.overdue, ...groups.today, ...groups.upcoming, ...groups.completed];
     const selId = req.query.sel ? Number(req.query.sel) : flat[0] ? flat[0].id : null;

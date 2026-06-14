@@ -128,7 +128,7 @@
 
   <% if (task) { %>
     <a class="tk-scrim" href="/tasks/table<%= qs ? '?' + qs : '' %>" aria-label="Close"></a>
-    <aside class="tk-drawer">
+    <aside class="tk-drawer" data-detail-pane>
       <a class="tk-drawer__x" href="/tasks/table<%= qs ? '?' + qs : '' %>" aria-label="Close">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 4l8 8M12 4l-8 8" stroke-linecap="round"/></svg>
       </a>

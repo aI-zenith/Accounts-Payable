@@ -418,35 +418,49 @@
   const escAttr = (s) => String(s == null ? '' : s).replace(/"/g, '&quot;');
 
   // ---- AI Polish (form description + comment composer) ----
-  document.querySelectorAll('[data-polish]').forEach((btn) => {
-    const scope = btn.closest('.tkfield') || btn.closest('.tkcc__box');
-    if (!scope) return;
-    const menu = (btn.parentElement && btn.parentElement.querySelector('[data-polish-menu]')) || scope.querySelector('[data-polish-menu]');
-    const ta = scope.querySelector('textarea');
-    const busy = scope.querySelector('[data-busy]');
-    const ctx = btn.getAttribute('data-ctx') || 'task description';
-    btn.addEventListener('click', (e) => { e.stopPropagation(); if (menu) menu.hidden = !menu.hidden; });
-    if (menu)
-      menu.querySelectorAll('[data-mode]').forEach((opt) => {
-        opt.addEventListener('click', () => {
-          menu.hidden = true;
-          if (busy) busy.hidden = false;
-          fetch('/tasks/ai/polish', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: ta ? ta.value : '', mode: opt.getAttribute('data-mode'), context: ctx }),
-          })
-            .then((r) => r.json())
-            .then((d) => { if (ta && d.text) ta.value = d.text; })
-            .catch(() => {})
-            .finally(() => { if (busy) busy.hidden = true; });
+  const initPolish = (root) => {
+    root.querySelectorAll('[data-polish]').forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      const scope = btn.closest('.tkfield') || btn.closest('.tkcc__box');
+      if (!scope) return;
+      const menu = (btn.parentElement && btn.parentElement.querySelector('[data-polish-menu]')) || scope.querySelector('[data-polish-menu]');
+      const ta = scope.querySelector('textarea');
+      const busy = scope.querySelector('[data-busy]');
+      const ctx = btn.getAttribute('data-ctx') || 'task description';
+      let running = false;
+      btn.addEventListener('click', (e) => { e.stopPropagation(); if (menu) menu.hidden = !menu.hidden; });
+      if (menu)
+        menu.querySelectorAll('[data-mode]').forEach((opt) => {
+          opt.addEventListener('click', () => {
+            menu.hidden = true;
+            if (running || !ta || !ta.value.trim()) return;
+            running = true;
+            if (busy) busy.hidden = false;
+            // Always release the spinner, even if the network hangs.
+            const ctrl = new AbortController();
+            const killer = setTimeout(() => ctrl.abort(), 20000);
+            fetch('/tasks/ai/polish', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: ta.value, mode: opt.getAttribute('data-mode'), context: ctx }),
+              signal: ctrl.signal,
+            })
+              .then((r) => r.json())
+              .then((d) => { if (d && d.text) ta.value = d.text; })
+              .catch(() => {})
+              .finally(() => { clearTimeout(killer); running = false; if (busy) busy.hidden = true; });
+          });
         });
-      });
-  });
+    });
+  };
+  initPolish(document);
   document.addEventListener('click', () => document.querySelectorAll('[data-polish-menu]').forEach((m) => (m.hidden = true)));
 
   // ---- Comment composer: attach / voice / screen / mention / paste ----
-  document.querySelectorAll('[data-composer]').forEach((form) => {
+  const initComposer = (root) => root.querySelectorAll('[data-composer]').forEach((form) => {
+    if (form.dataset.bound) return;
+    form.dataset.bound = '1';
     const fileInput = form.querySelector('[data-file]');
     const kindInput = form.querySelector('[data-kind]');
     const durInput = form.querySelector('[data-duration]');
@@ -469,37 +483,86 @@
     if (attachBtn) attachBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', () => { if (fileInput.files[0]) { kindInput.value = 'file'; renderMedia(fileInput.files[0].name, 'file'); } });
 
+    let recType = null;
+    // Stop every track and clear the timer — the single source of truth for
+    // tearing a recording down so nothing is ever left "recording".
+    const teardown = () => {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (stream) { try { stream.getTracks().forEach((t) => t.stop()); } catch (e) {} stream = null; }
+      if (recBar) recBar.hidden = true;
+      recType = null;
+    };
     const startRec = async (type) => {
+      if (recType) { stopRec(); return; } // clicking again stops the current recording
+      if (!navigator.mediaDevices || !window.MediaRecorder) { alert('Recording is not supported in this browser.'); return; }
       try {
         stream = type === 'voice'
           ? await navigator.mediaDevices.getUserMedia({ audio: true })
           : await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
         chunks = [];
+        recType = type;
         const mime = type === 'voice' ? 'audio/webm' : 'video/webm';
         mr = new MediaRecorder(stream, MediaRecorder.isTypeSupported(mime) ? { mimeType: mime } : undefined);
-        mr.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+        mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
         mr.onstop = () => {
-          stream.getTracks().forEach((t) => t.stop());
-          const blob = new Blob(chunks, { type: mr.mimeType || mime });
+          const blob = new Blob(chunks, { type: (mr && mr.mimeType) || mime });
           const dur = Math.max(1, Math.round((Date.now() - startT) / 1000));
           const fname = (type === 'voice' ? 'voice-note' : 'screen-recording') + '-' + Date.now() + '.webm';
-          setFile(new File([blob], fname, { type: blob.type }), type, dur);
+          if (blob.size) setFile(new File([blob], fname, { type: blob.type }), type, dur);
+          teardown();
         };
+        // If the user stops screen-sharing from the browser chrome, end cleanly.
+        stream.getTracks().forEach((t) => { t.onended = () => stopRec(); });
         mr.start();
         startT = Date.now();
         recBar.hidden = false;
-        recLabel.textContent = type === 'voice' ? 'Recording voice note' : 'Recording screen';
-        timer = setInterval(() => { const s = Math.round((Date.now() - startT) / 1000); recTime.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }, 400);
-      } catch (err) { alert('Could not start recording: ' + err.message); }
+        if (recLabel) recLabel.textContent = type === 'voice' ? 'Recording voice note' : 'Recording screen';
+        const tick = () => { const s = Math.round((Date.now() - startT) / 1000); if (recTime) recTime.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); if (s >= 600) stopRec(); };
+        tick();
+        timer = setInterval(tick, 500);
+      } catch (err) {
+        teardown();
+        if (err && err.name !== 'NotAllowedError' && err.name !== 'AbortError') alert('Could not start recording: ' + err.message);
+      }
     };
-    const stopRec = () => { clearInterval(timer); recBar.hidden = true; if (mr && mr.state !== 'inactive') mr.stop(); };
-    const cancelRec = () => { clearInterval(timer); recBar.hidden = true; if (mr) { mr.onstop = null; try { mr.stop(); } catch (e) {} } if (stream) stream.getTracks().forEach((t) => t.stop()); chunks = []; };
+    const stopRec = () => { if (mr && mr.state !== 'inactive') { try { mr.stop(); } catch (e) { teardown(); } } else { teardown(); } };
+    const cancelRec = () => { if (mr) mr.onstop = null; if (mr && mr.state !== 'inactive') { try { mr.stop(); } catch (e) {} } chunks = []; mediaList.innerHTML = ''; if (fileInput) { fileInput.value = ''; } if (kindInput) kindInput.value = 'file'; teardown(); };
     const vb = form.querySelector('[data-voice]'); if (vb) vb.addEventListener('click', () => startRec('voice'));
     const sb = form.querySelector('[data-screen]'); if (sb) sb.addEventListener('click', () => startRec('screen'));
     const stb = form.querySelector('[data-rec-stop]'); if (stb) stb.addEventListener('click', stopRec);
     const cb = form.querySelector('[data-rec-cancel]'); if (cb) cb.addEventListener('click', cancelRec);
     const mb = form.querySelector('[data-mention]'); if (mb && ta) mb.addEventListener('click', () => { ta.value += (ta.value && !ta.value.endsWith(' ') ? ' ' : '') + '@'; ta.focus(); });
     if (ta) ta.addEventListener('paste', (e) => { const f = e.clipboardData && e.clipboardData.files[0]; if (f) setFile(f, 'file'); });
+  });
+  initComposer(document);
+
+  // ---- Fast in-place tab switching inside the detail panel ----
+  // Swap just the detail pane instead of reloading the whole app shell, so
+  // moving between Overview / Checklist / Comments / Files / Activity is instant.
+  const bindAutosubmit = (root) => root.querySelectorAll('[data-autosubmit]').forEach((s) => {
+    if (s.dataset.bound) return;
+    s.dataset.bound = '1';
+    s.addEventListener('change', () => { if (s.form) s.form.submit(); });
+  });
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('.tkd-tab');
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+    const pane = a.closest('[data-detail-pane]');
+    if (!pane) return;
+    e.preventDefault();
+    pane.classList.add('is-loading');
+    fetch(a.href, { headers: { 'X-Requested-With': 'fetch' } })
+      .then((r) => r.text())
+      .then((html) => {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const fresh = doc.querySelector('[data-detail-pane]');
+        if (!fresh) { window.location.href = a.href; return; }
+        pane.innerHTML = fresh.innerHTML;
+        initPolish(pane); initComposer(pane); bindAutosubmit(pane);
+        history.replaceState(null, '', a.href);
+      })
+      .catch(() => { window.location.href = a.href; })
+      .finally(() => pane.classList.remove('is-loading'));
   });
 
   // ---- People multi-select (assignees / CC) ----
