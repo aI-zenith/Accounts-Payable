@@ -270,16 +270,26 @@ export async function createCreditCardTransaction(payload) {
  */
 export async function attachReceipt(transactionId, fileBuffer, filename) {
   const base64 = Buffer.isBuffer(fileBuffer) ? fileBuffer.toString('base64') : String(fileBuffer);
+  const name = filename || 'receipt.pdf';
+  const ext = (name.includes('.') ? name.split('.').pop() : 'pdf').toLowerCase();
+
+  // A FileAttachment is a generic record linked back to its parent via
+  // EntityType + EntityKeyID, carrying the file in the required File (FileModel).
   const payload = {
-    Name: filename || 'receipt.pdf',
-    File: base64,
-    IsActive: true,
+    EntityType: 'CreditCardTransaction',
+    EntityKeyID: Number(transactionId),
+    Description: name,
+    File: {
+      Name: name,
+      Extension: ext,
+      Data: base64,
+    },
   };
-  const { body, location } = await request(`/CreditCardTransactions/${transactionId}/Attachments`, {
+  const { body, location } = await request('/FileAttachments', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return extractId(body, location, ['FileID', 'AttachmentID', 'ID']);
+  return extractId(body, location, ['FileAttachmentID', 'FileID', 'ID']);
 }
 
 // Test-only helper used by the Settings connection test.
