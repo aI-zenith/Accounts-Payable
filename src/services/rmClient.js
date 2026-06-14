@@ -379,18 +379,93 @@ async function getRmxBase() {
   }
 }
 
+// --- RMX web-app session (for file attachments) ---------------------------
+// The rmx host that handles file uploads uses ASP.NET session auth — an
+// `ASP.NET_SessionId` cookie established by POST ExpressAuthentication/Authenticate
+// — NOT the WAPI token (its AuthorizeUser is disabled there). We log in with the
+// configured RM credentials, reuse the cookie, and re-authenticate on TTL/401.
+const RMX_VERSION = process.env.RMX_VERSION || '12.260550';
+const RMX_SESSION_TTL_MS = 15 * 60 * 1000;
+let rmxCookie = null;
+let rmxCookieAt = 0;
+
+function rmxOriginOf(base) {
+  try {
+    const u = new URL(base);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return null;
+  }
+}
+function setCookiesOf(res) {
+  if (typeof res.headers.getSetCookie === 'function') return res.headers.getSetCookie();
+  const sc = res.headers.get('set-cookie');
+  return sc ? [sc] : [];
+}
+function sessionCookieFrom(list) {
+  for (const c of list) {
+    const m = c && String(c).match(/(ASP\.NET_SessionId=[^;]+)/i);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+async function rmxAuthenticate() {
+  const base = await getRmxBase();
+  const origin = rmxOriginOf(base);
+  const { rm } = await getCredentials();
+  const username = process.env.RMX_USERNAME || rm.username;
+  const password = process.env.RMX_PASSWORD || rm.password;
+  if (!username || !password) {
+    throw new Error('Rent Manager credentials are not configured for the RMX session.');
+  }
+  const common = {
+    Accept: 'application/json, text/plain, */*',
+    'RMX-Version': RMX_VERSION,
+    ...(origin ? { Origin: origin, Referer: `${origin}/` } : {}),
+  };
+
+  // 1) Prime an ASP.NET session cookie (the web app gets one before logging in).
+  let cookie = null;
+  try {
+    const prime = await fetch(`${base}/SessionStatus`, { headers: common });
+    cookie = sessionCookieFrom(setCookiesOf(prime));
+  } catch {
+    /* ignore — Authenticate may set the cookie itself */
+  }
+
+  // 2) Authenticate, binding that session to the user.
+  const res = await fetch(`${base}/ExpressAuthentication/Authenticate`, {
+    method: 'POST',
+    headers: { ...common, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+    body: JSON.stringify({ Username: username, Password: password }),
+  });
+  cookie = sessionCookieFrom(setCookiesOf(res)) || cookie;
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`RMX authenticate failed: HTTP ${res.status} ${String(text).slice(0, 200)}`);
+  }
+  if (!cookie) throw new Error('RMX authenticate succeeded but returned no session cookie.');
+  rmxCookie = cookie;
+  rmxCookieAt = Date.now();
+  return cookie;
+}
+
+async function getRmxCookie() {
+  if (rmxCookie && Date.now() - rmxCookieAt < RMX_SESSION_TTL_MS) return rmxCookie;
+  return rmxAuthenticate();
+}
+
 /**
- * Attach a receipt PDF to a credit card transaction. Confirmed by reverse-
- * engineering RM's own web client and live-testing on the `bluegm` account:
- *   - POST {rmx}/api/CreditCardTransactions/{id}/Attachments  (the rmx host, not
- *     the dedicated WAPI host — uploads only exist there).
- *   - Body is multipart/form-data, NOT JSON:
- *       • `dataModel`  = a JSON STRING { EntityKeyID, EntityType: 38, Description }
- *                        (38 = CreditCardTransaction).
+ * Attach a receipt PDF to a credit card transaction. Endpoint + payload confirmed
+ * from RM's own web client; auth confirmed against the live `bluegm` account:
+ *   - POST {rmx}/api/CreditCardTransactions/{id}/Attachments (the rmx host — the
+ *     dedicated WAPI host has no upload route).
+ *   - Body is multipart/form-data (NOT JSON):
+ *       • `dataModel` = JSON STRING { EntityKeyID, EntityType: 38, Description }.
  *       • the file part's FIELD NAME is the filename itself; value is the bytes.
- *   - Response is an array; the new record is [0] with FileAttachmentID/FileID.
- * Auth: the API token, sent both as X-RM12Api-ApiToken and as a Bearer header so
- * whichever the rmx host expects is satisfied; a 401 re-auths once.
+ *   - Auth is the RMX web SESSION cookie (ASP.NET_SessionId), not the WAPI token.
+ *   - Response is an array; [0] holds FileAttachmentID/FileID.
  * Non-fatal by contract (the route swallows errors) so a failure here never
  * undoes the already-created transaction. Returns the new FileAttachmentID.
  */
@@ -398,6 +473,7 @@ export async function attachReceipt(transactionId, fileBuffer, filename) {
   const buf = Buffer.isBuffer(fileBuffer) ? fileBuffer : Buffer.from(fileBuffer);
   const name = filename || 'receipt.pdf';
   const base = await getRmxBase();
+  const origin = rmxOriginOf(base);
   const url = `${base}/CreditCardTransactions/${transactionId}/Attachments`;
   const dataModel = JSON.stringify({
     EntityKeyID: Number(transactionId),
@@ -405,28 +481,29 @@ export async function attachReceipt(transactionId, fileBuffer, filename) {
     Description: name,
   });
 
-  const doPost = (token) => {
+  const doPost = (cookie) => {
     const form = new FormData();
     form.append('dataModel', dataModel);
-    // The Angular client names the file part with the filename itself.
+    // The web client names the file part with the filename itself.
     form.append(name, new Blob([buf], { type: 'application/pdf' }), name);
     return fetch(url, {
       method: 'POST',
       // Do NOT set Content-Type — fetch adds the multipart boundary.
       headers: {
-        Accept: 'application/json',
-        'X-RM12Api-ApiToken': token,
-        Authorization: `Bearer ${token}`,
+        Accept: 'application/json, text/plain, */*',
+        'RMX-Version': RMX_VERSION,
+        Cookie: cookie,
+        ...(origin ? { Origin: origin, Referer: `${origin}/` } : {}),
       },
       body: form,
     });
   };
 
-  let token = await getToken();
-  let res = await doPost(token);
+  let cookie = await getRmxCookie();
+  let res = await doPost(cookie);
   if (res.status === 401) {
-    token = await authenticate();
-    res = await doPost(token);
+    cookie = await rmxAuthenticate();
+    res = await doPost(cookie);
   }
 
   const text = await res.text();

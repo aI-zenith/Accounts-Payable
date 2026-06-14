@@ -7,6 +7,7 @@ import {
   authenticate,
   _resetTokenCache,
   request,
+  attachReceipt,
   listCreditCards,
   listExpenseGLAccounts,
 } from '../services/rmClient.js';
@@ -265,116 +266,27 @@ router.post(
   })
 );
 
-// --- GET /settings/rmx-auth-test ------------------------------------------
-// TEMPORARY: the rmx host (file upload) needs a web SESSION, not the WAPI token
-// (it 401s "Active Session Required"). Try to establish that session server-side
-// by logging in with the stored credentials against candidate rmx auth
-// endpoints, then attempt the multipart receipt upload with whatever the login
-// returns (Bearer token and/or session cookie). Reports each step. ?txn default
-// 14631. Remove once attach auth is wired.
+// --- GET /settings/attach-test --------------------------------------------
+// TEMPORARY: run the real attachReceipt() (RMX session login -> multipart
+// upload) for ?txn (default 14631) using its stored receipt, and report the new
+// FileAttachmentID or the error. Remove once confirmed.
 router.get(
-  '/settings/rmx-auth-test',
+  '/settings/attach-test',
   wrap(async (req, res) => {
-    const out = {};
-    const { rm } = await getCredentials();
-    const apiBase = rm.baseUrl ? rm.baseUrl.replace(/\/+$/, '') : null;
-    let rmxBase = process.env.RENTMANAGER_RMX_BASE_URL
-      ? process.env.RENTMANAGER_RMX_BASE_URL.replace(/\/+$/, '')
-      : null;
-    if (!rmxBase && apiBase) {
-      try {
-        rmxBase = `https://${new URL(apiBase).host.replace(/\.api\.rentmanager\.com$/i, '.rmx.rentmanager.com')}/api`;
-      } catch {
-        rmxBase = null;
-      }
+    const txn = req.query.txn ? Number(req.query.txn) : 14631;
+    const { rows } = await query(
+      'SELECT file_data, original_name FROM invoices WHERE rm_project_id = $1 LIMIT 1',
+      [String(txn)]
+    );
+    if (!rows[0]?.file_data) {
+      return res.json({ ok: false, error: `No stored receipt found for transaction ${txn}.` });
     }
-    out.hosts = { apiBase, rmxBase };
-    if (!rmxBase) return res.json(out);
-
-    const creds = { Username: rm.username, Password: rm.password, LocationID: rm.locationId ?? 1 };
-
-    // 1) Try to log in against the rmx host to obtain a session token/cookie.
-    let sessionToken = null;
-    let sessionCookie = null;
-    for (const path of ['/Authentication/AuthorizeUser', '/Authentication/Authenticate', '/Authentication/Login']) {
-      try {
-        const r = await fetch(`${rmxBase}${path}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify(creds),
-        });
-        const text = await r.text();
-        let body;
-        try {
-          body = JSON.parse(text);
-        } catch {
-          body = String(text).slice(0, 300);
-        }
-        const setCookie = r.headers.get('set-cookie');
-        out[`auth${path}`] = {
-          status: r.status,
-          setCookie: setCookie ? String(setCookie).slice(0, 140) : null,
-          body,
-        };
-        if (r.ok) {
-          const tok =
-            typeof body === 'string'
-              ? body.replace(/^"|"$/g, '')
-              : body?.Token || body?.token || body?.ApiToken || body?.SessionToken;
-          if (tok && !sessionToken) sessionToken = tok;
-          if (setCookie && !sessionCookie) sessionCookie = setCookie;
-        }
-      } catch (err) {
-        out[`auth${path}`] = { error: String(err.message).slice(0, 200) };
-      }
+    try {
+      const id = await attachReceipt(txn, rows[0].file_data, rows[0].original_name || 'receipt.pdf');
+      res.json({ ok: true, fileAttachmentId: id });
+    } catch (err) {
+      res.json({ ok: false, status: err.status ?? null, error: String(err.message).slice(0, 500) });
     }
-    out.gotSession = { token: Boolean(sessionToken), cookie: Boolean(sessionCookie) };
-
-    // 2) If login gave us something, attempt the multipart upload with it.
-    if (sessionToken || sessionCookie) {
-      const txn = req.query.txn ? Number(req.query.txn) : 14631;
-      let bytes;
-      let fname = 'receipt.pdf';
-      try {
-        const { rows } = await query(
-          'SELECT file_data, original_name FROM invoices WHERE rm_project_id = $1 LIMIT 1',
-          [String(txn)]
-        );
-        if (rows[0]?.file_data) {
-          bytes = rows[0].file_data;
-          fname = rows[0].original_name || fname;
-        }
-      } catch {
-        /* stub */
-      }
-      if (!bytes) bytes = Buffer.from('%PDF-1.4\n%%EOF\n', 'utf8');
-
-      const form = new FormData();
-      form.append('dataModel', JSON.stringify({ EntityKeyID: txn, EntityType: 38, Description: fname }));
-      form.append(fname, new Blob([bytes], { type: 'application/pdf' }), fname);
-      const headers = { Accept: 'application/json' };
-      if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
-      if (sessionCookie) headers.Cookie = sessionCookie;
-      try {
-        const r = await fetch(`${rmxBase}/CreditCardTransactions/${txn}/Attachments`, {
-          method: 'POST',
-          headers,
-          body: form,
-        });
-        const text = await r.text();
-        let body;
-        try {
-          body = JSON.parse(text);
-        } catch {
-          body = String(text).slice(0, 400);
-        }
-        out.uploadWithSession = { status: r.status, body };
-      } catch (err) {
-        out.uploadWithSession = { error: String(err.message).slice(0, 250) };
-      }
-    }
-
-    res.json(out);
   })
 );
 
