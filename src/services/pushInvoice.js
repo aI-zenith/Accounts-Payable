@@ -83,8 +83,12 @@ async function doAttach(inv, txnId) {
     ]);
     return ' Receipt attached.';
   } catch (err) {
-    console.error(`[push] attach failed for #${inv.id}:`, err.message);
-    return ` (receipt attach failed: ${err.message.slice(0, 160)})`;
+    // Rent Manager does not support attaching files to credit card transactions
+    // via an API token (the file host needs a live web session). The receipt
+    // stays stored in this app and viewable per bill — log details, keep the
+    // user-facing note short and non-alarming.
+    console.error(`[push] receipt attach unavailable for #${inv.id}:`, err.message);
+    return ' (receipt kept in this app; Rent Manager attachment via API is unavailable)';
   }
 }
 
