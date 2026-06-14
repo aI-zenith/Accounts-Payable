@@ -198,6 +198,19 @@ function idFromLocation(loc) {
   return m ? Number(m[1]) : null;
 }
 
+// Robustly pull a record id out of a WAPI create response, which may be a bare
+// number, an object, or an array of one object, with varying id field names.
+function extractId(body, location, fields) {
+  if (typeof body === 'number') return body;
+  const obj = Array.isArray(body) ? body[0] : body;
+  if (obj && typeof obj === 'object') {
+    for (const f of fields) {
+      if (obj[f] != null) return obj[f];
+    }
+  }
+  return idFromLocation(location);
+}
+
 async function listAll(path) {
   const { body } = await request(path);
   return Array.isArray(body) ? body : body ? [body] : [];
@@ -247,10 +260,7 @@ export async function createCreditCardTransaction(payload) {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return (
-    (body && (body.CreditCardTransactionID || body.TransactionID || body.ID)) ||
-    idFromLocation(location)
-  );
+  return extractId(body, location, ['CreditCardTransactionID', 'TransactionID', 'ID']);
 }
 
 /**
@@ -269,7 +279,7 @@ export async function attachReceipt(transactionId, fileBuffer, filename) {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return (body && (body.FileID || body.AttachmentID || body.ID)) || idFromLocation(location);
+  return extractId(body, location, ['FileID', 'AttachmentID', 'ID']);
 }
 
 // Test-only helper used by the Settings connection test.

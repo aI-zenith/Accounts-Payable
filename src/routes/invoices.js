@@ -424,19 +424,24 @@ async function pushInvoice(inv) {
 
     // 6) Attach the receipt PDF — non-fatal: never undo a created transaction.
     let attachNote = '';
-    try {
-      const { rows: fr } = await query('SELECT file_data FROM invoices WHERE id = $1', [inv.id]);
-      const fileData = fr[0] && fr[0].file_data;
-      if (fileData && txnId != null) {
-        const attId = await attachReceipt(txnId, fileData, inv.original_name);
-        await query('UPDATE invoices SET rm_attachment_id = $2 WHERE id = $1', [
-          inv.id,
-          attId != null ? String(attId) : null,
-        ]);
+    if (txnId == null) {
+      attachNote = ' (could not read the new transaction id, so the receipt was not attached)';
+    } else {
+      try {
+        const { rows: fr } = await query('SELECT file_data FROM invoices WHERE id = $1', [inv.id]);
+        const fileData = fr[0] && fr[0].file_data;
+        if (fileData) {
+          const attId = await attachReceipt(txnId, fileData, inv.original_name);
+          await query('UPDATE invoices SET rm_attachment_id = $2 WHERE id = $1', [
+            inv.id,
+            attId != null ? String(attId) : null,
+          ]);
+          attachNote = ' Receipt attached.';
+        }
+      } catch (err) {
+        console.error(`[invoices] attach failed for #${inv.id}:`, err.message);
+        attachNote = ` (receipt attach failed: ${err.message.slice(0, 160)})`;
       }
-    } catch (err) {
-      console.error(`[invoices] attach failed for #${inv.id}:`, err.message);
-      attachNote = ` (receipt attach failed: ${err.message.slice(0, 140)})`;
     }
 
     return { ok: true, status: 'pushed', message: `Credit card transaction ${txnId ?? 'created'}.${attachNote}` };
