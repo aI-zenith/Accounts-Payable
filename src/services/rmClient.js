@@ -276,6 +276,8 @@ export async function attachReceipt(transactionId, fileBuffer, filename) {
   // Attachments are a sub-collection of the transaction; the parent is implied
   // by the URL. The File (FileModel) is required on create.
   const payload = {
+    EntityType: 'CreditCardTransaction',
+    EntityKeyID: Number(transactionId),
     Description: name,
     File: {
       Name: name,
