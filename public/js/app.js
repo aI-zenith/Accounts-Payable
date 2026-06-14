@@ -175,6 +175,65 @@
     }
   });
 
+  // ---- home: live clock (Eastern) ----
+  const clock = document.getElementById('clock');
+  if (clock) {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'America/New_York',
+    });
+    const tick = () => {
+      clock.textContent = fmt.format(new Date());
+    };
+    tick();
+    setInterval(tick, 20000);
+  }
+
+  // ---- home: Bridgeport, CT weather (Open-Meteo, no key) ----
+  const wx = document.querySelector('[data-weather]');
+  if (wx) {
+    const wxInfo = (code, isDay) => {
+      const m = {
+        0: ['Clear', isDay ? '☀️' : '🌙'],
+        1: ['Mainly clear', isDay ? '🌤️' : '🌙'],
+        2: ['Partly cloudy', '⛅'],
+        3: ['Overcast', '☁️'],
+        45: ['Fog', '🌫️'], 48: ['Rime fog', '🌫️'],
+        51: ['Light drizzle', '🌦️'], 53: ['Drizzle', '🌦️'], 55: ['Heavy drizzle', '🌧️'],
+        61: ['Light rain', '🌦️'], 63: ['Rain', '🌧️'], 65: ['Heavy rain', '🌧️'],
+        66: ['Freezing rain', '🌧️'], 67: ['Freezing rain', '🌧️'],
+        71: ['Light snow', '🌨️'], 73: ['Snow', '🌨️'], 75: ['Heavy snow', '❄️'], 77: ['Snow grains', '🌨️'],
+        80: ['Showers', '🌦️'], 81: ['Showers', '🌧️'], 82: ['Heavy showers', '⛈️'],
+        85: ['Snow showers', '🌨️'], 86: ['Snow showers', '❄️'],
+        95: ['Thunderstorm', '⛈️'], 96: ['Thunderstorm', '⛈️'], 99: ['Thunderstorm', '⛈️'],
+      };
+      return m[code] || ['—', '🌡️'];
+    };
+    const lat = wx.getAttribute('data-lat');
+    const lon = wx.getAttribute('data-lon');
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      '&current=temperature_2m,apparent_temperature,weather_code,is_day' +
+      '&temperature_unit=fahrenheit&timezone=America/New_York';
+    fetch(url)
+      .then((r) => r.json())
+      .then((d) => {
+        const c = d.current || {};
+        const [label, icon] = wxInfo(c.weather_code, c.is_day);
+        wx.innerHTML =
+          `<div class="weather__icon">${icon}</div>` +
+          `<div class="weather__temp">${Math.round(c.temperature_2m)}°</div>` +
+          `<div class="weather__label">${label} · feels ${Math.round(c.apparent_temperature)}°</div>` +
+          `<div class="weather__loc">Bridgeport, CT</div>`;
+      })
+      .catch(() => {
+        wx.innerHTML =
+          '<div class="weather__loc">Bridgeport, CT</div>' +
+          '<div class="weather__loading">Weather unavailable</div>';
+      });
+  }
+
   // ---- mobile sidebar toggle ----
   const navToggle = document.getElementById('navToggle');
   if (navToggle) {

@@ -1,0 +1,52 @@
+<section class="hero">
+  <div class="hero__text">
+    <p class="hero__date"><%= dateLong %> · <span id="clock" class="hero__clock">—</span> ET</p>
+    <h1 class="hero__greet"><%= greeting %><%= firstName ? ', ' + firstName : '' %></h1>
+    <p class="hero__quote">“<%= quote %>”</p>
+  </div>
+  <div class="weather" id="weather" data-weather data-lat="41.1792" data-lon="-73.1894">
+    <div class="weather__loc">Bridgeport, CT</div>
+    <div class="weather__loading">Loading weather…</div>
+  </div>
+</section>
+
+<section class="page-head">
+  <h2 class="settings-section__title">Your workspace</h2>
+  <p class="settings-section__sub">Accounts Payable is live. More modules are on the way.</p>
+</section>
+
+<div class="tiles">
+  <a class="tile tile--ap" href="/invoices">
+    <div class="tile__head">
+      <span class="tile__ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 4h16v4H4zM4 11h16M4 16h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+      <span class="pill pill--ok">Live</span>
+    </div>
+    <h3 class="tile__title">Accounts Payable</h3>
+    <p class="tile__sub">Bills in by email or upload → posted to Rent Manager with receipts attached.</p>
+    <div class="tile__stats">
+      <span><strong><%= ap.total %></strong> invoices</span>
+      <span><strong><%= ap.review %></strong> need review</span>
+      <span><strong><%= ap.pushed %></strong> pushed</span>
+    </div>
+  </a>
+
+  <%
+    const soon = [
+      ['Properties', 'Units, owners & portfolios', '<path d="M4 10l8-6 8 6v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>'],
+      ['Residents', 'Tenants, balances & messaging', '<circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M5 19c1-3.5 4-5 7-5s6 1.5 7 5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'],
+      ['Leasing', 'Applications & e-signature', '<path d="M6 3h9l4 4v14H6z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M9 12h6M9 16h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'],
+      ['Maintenance', 'Work orders & vendors', '<path d="M14 6a4 4 0 0 0-5 5l-5 5 2 2 5-5a4 4 0 0 0 5-5l-2 2-2-2z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/>'],
+      ['Reports', 'Owner statements & KPIs', '<path d="M5 19V9M12 19V4M19 19v-7" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>'],
+    ];
+  %>
+  <% soon.forEach(([t, s, icon]) => { %>
+    <div class="tile tile--soon">
+      <div class="tile__head">
+        <span class="tile__ic"><svg viewBox="0 0 24 24" fill="none"><%- icon %></svg></span>
+        <span class="navlink__soon">soon</span>
+      </div>
+      <h3 class="tile__title"><%= t %></h3>
+      <p class="tile__sub"><%= s %></p>
+    </div>
+  <% }) %>
+</div>

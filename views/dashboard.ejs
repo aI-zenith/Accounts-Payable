@@ -45,9 +45,9 @@
 </form>
 
 <nav class="filters" aria-label="Filter by status">
-  <a class="filter <%= !filter ? 'is-active' : '' %>" href="/">All</a>
+  <a class="filter <%= !filter ? 'is-active' : '' %>" href="/invoices">All</a>
   <% statuses.forEach((s) => { %>
-    <a class="filter <%= filter === s ? 'is-active' : '' %>" href="/?status=<%= s %>"><%= s.replace(/_/g, ' ') %></a>
+    <a class="filter <%= filter === s ? 'is-active' : '' %>" href="/invoices?status=<%= s %>"><%= s.replace(/_/g, ' ') %></a>
   <% }) %>
 </nav>
 

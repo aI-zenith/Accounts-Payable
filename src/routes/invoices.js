@@ -61,9 +61,9 @@ function normalizeNumber(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-// --- GET / : dashboard -----------------------------------------------------
+// --- GET /invoices : the Accounts Payable ledger ---------------------------
 router.get(
-  '/',
+  '/invoices',
   wrap(async (req, res) => {
     const filter = STATUSES.includes(req.query.status) ? req.query.status : null;
     const sql = filter
@@ -89,14 +89,14 @@ router.post(
   (req, res, next) =>
     upload.array('invoices', 50)(req, res, (err) => {
       if (err) {
-        return res.redirect('/?notice=' + encodeURIComponent(err.message));
+        return res.redirect('/invoices?notice=' + encodeURIComponent(err.message));
       }
       next();
     }),
   wrap(async (req, res) => {
     const files = req.files || [];
     if (files.length === 0) {
-      return res.redirect('/?notice=' + encodeURIComponent('Please choose one or more PDFs to upload.'));
+      return res.redirect('/invoices?notice=' + encodeURIComponent('Please choose one or more PDFs to upload.'));
     }
     for (const file of files) {
       const { rows } = await query(
@@ -114,7 +114,7 @@ router.post(
       files.length === 1
         ? `Uploaded "${files[0].originalname}" — extracting…`
         : `Uploaded ${files.length} receipts — extracting…`;
-    res.redirect('/?notice=' + encodeURIComponent(msg));
+    res.redirect('/invoices?notice=' + encodeURIComponent(msg));
   })
 );
 
@@ -305,7 +305,7 @@ router.post(
       else flagged += 1;
     }
     const msg = `Push all: ${pushed} pushed, ${flagged} need review${rows.length === 0 ? ' (nothing ready)' : ''}.`;
-    return res.redirect('/?notice=' + encodeURIComponent(msg));
+    return res.redirect('/invoices?notice=' + encodeURIComponent(msg));
   })
 );
 
@@ -320,7 +320,7 @@ router.get(
       fs.rm(path.resolve(req.invoice.stored_path), { force: true }, () => {});
     }
     await query('DELETE FROM invoices WHERE id = $1', [req.invoice.id]);
-    res.redirect('/?notice=' + encodeURIComponent('Invoice deleted.'));
+    res.redirect('/invoices?notice=' + encodeURIComponent('Invoice deleted.'));
   })
 );
 

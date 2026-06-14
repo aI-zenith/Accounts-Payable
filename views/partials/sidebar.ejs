@@ -1,6 +1,8 @@
 <%
   const apActive = ['dashboard', 'reconcile'].includes(active);
+  const homeActive = active === 'home';
   const ic = {
+    home: '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>',
     ap: '<path d="M4 4h16v4H4zM4 11h16M4 16h10" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
     prop: '<path d="M4 10l8-6 8 6v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>',
     res: '<circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M5 19c1-3.5 4-5 7-5s6 1.5 7 5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
@@ -23,15 +25,22 @@
 
   <nav class="sidebar__nav" aria-label="Primary">
     <div class="navgroup">
+      <a class="navlink <%= homeActive ? 'is-active' : '' %>" href="/">
+        <svg class="navlink__icon" viewBox="0 0 24 24"><%- ic.home %></svg>
+        Dashboard
+      </a>
+    </div>
+
+    <div class="navgroup">
       <div class="navgroup__label">Modules</div>
 
-      <a class="navlink <%= apActive ? 'is-active' : '' %>" href="/">
+      <a class="navlink <%= apActive ? 'is-active' : '' %>" href="/invoices">
         <svg class="navlink__icon" viewBox="0 0 24 24"><%- ic.ap %></svg>
         Accounts Payable
       </a>
       <% if (apActive) { %>
         <div class="navsub">
-          <a class="navsub__link <%= active === 'dashboard' ? 'is-active' : '' %>" href="/">Invoices</a>
+          <a class="navsub__link <%= active === 'dashboard' ? 'is-active' : '' %>" href="/invoices">Invoices</a>
           <a class="navsub__link <%= active === 'reconcile' ? 'is-active' : '' %>" href="/reconcile">Reconcile</a>
         </div>
       <% } %>

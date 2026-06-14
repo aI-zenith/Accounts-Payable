@@ -4,6 +4,7 @@ import expressLayouts from 'express-ejs-layouts';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import homeRoutes from './routes/home.js';
 import invoiceRoutes from './routes/invoices.js';
 import settingsRoutes from './routes/settings.js';
 import reconcileRoutes from './routes/reconcile.js';
@@ -58,6 +59,7 @@ app.use('/', authRoutes);
 
 // Everything below requires a signed-in user.
 app.use(requireAuth);
+app.use('/', homeRoutes);
 app.use('/', invoiceRoutes);
 app.use('/', settingsRoutes);
 app.use('/', reconcileRoutes);
