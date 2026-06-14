@@ -7,7 +7,6 @@ import {
   authenticate,
   _resetTokenCache,
   request,
-  attachReceipt,
   listCreditCards,
   listExpenseGLAccounts,
 } from '../services/rmClient.js';
@@ -262,30 +261,6 @@ router.post(
       });
     } catch (err) {
       res.json({ ok: false, message: err.message });
-    }
-  })
-);
-
-// --- GET /settings/attach-test --------------------------------------------
-// TEMPORARY: run the real attachReceipt() (RMX session login -> multipart
-// upload) for ?txn (default 14631) using its stored receipt, and report the new
-// FileAttachmentID or the error. Remove once confirmed.
-router.get(
-  '/settings/attach-test',
-  wrap(async (req, res) => {
-    const txn = req.query.txn ? Number(req.query.txn) : 14631;
-    const { rows } = await query(
-      'SELECT file_data, original_name FROM invoices WHERE rm_project_id = $1 LIMIT 1',
-      [String(txn)]
-    );
-    if (!rows[0]?.file_data) {
-      return res.json({ ok: false, error: `No stored receipt found for transaction ${txn}.` });
-    }
-    try {
-      const id = await attachReceipt(txn, rows[0].file_data, rows[0].original_name || 'receipt.pdf');
-      res.json({ ok: true, fileAttachmentId: id });
-    } catch (err) {
-      res.json({ ok: false, status: err.status ?? null, error: String(err.message).slice(0, 500) });
     }
   })
 );
