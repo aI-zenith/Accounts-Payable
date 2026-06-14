@@ -273,11 +273,9 @@ export async function attachReceipt(transactionId, fileBuffer, filename) {
   const name = filename || 'receipt.pdf';
   const ext = (name.includes('.') ? name.split('.').pop() : 'pdf').toLowerCase();
 
-  // A FileAttachment is a generic record linked back to its parent via
-  // EntityType + EntityKeyID, carrying the file in the required File (FileModel).
+  // Attachments are a sub-collection of the transaction; the parent is implied
+  // by the URL. The File (FileModel) is required on create.
   const payload = {
-    EntityType: 'CreditCardTransaction',
-    EntityKeyID: Number(transactionId),
     Description: name,
     File: {
       Name: name,
@@ -285,7 +283,7 @@ export async function attachReceipt(transactionId, fileBuffer, filename) {
       Data: base64,
     },
   };
-  const { body, location } = await request('/FileAttachments', {
+  const { body, location } = await request(`/CreditCardTransactions/${transactionId}/Attachments`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
