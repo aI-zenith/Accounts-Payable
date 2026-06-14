@@ -368,15 +368,15 @@ export async function createCreditCardTransaction(payload) {
  * Called as a separate, non-fatal step so a failure never undoes the
  * already-created transaction. Returns the new attachment/file id.
  *
- * Confirmed against live 500s:
+ * Confirmed against live errors:
  *   - Body MUST be an ARRAY of FileAttachment objects — a bare object 500s with
  *     "issue retrieving data from the database".
- *   - The /{Parent}/{id}/FileAttachments URL drives the parent lookup, so it
- *     must target the CreditCardTransactions collection: a credit card
- *     transaction id is NOT an Invoice id (posting to /Invoices/{id} 500s with
- *     "Unable to locate Invoice with ID …").
- *   - EntityType is the eFileAttachmentRelatedObjectTypes enum and EntityKeyID
- *     is the record id; both are set to match the parent.
+ *   - There is NO /{Parent}/{id}/FileAttachments sub-collection for credit card
+ *     transactions (it 404s), and a CCT id is NOT an Invoice id (/Invoices/{id}
+ *     500s "Unable to locate Invoice"). So post to the GENERIC top-level
+ *     /FileAttachments collection and identify the parent in the body instead.
+ *   - EntityType is the eFileAttachmentRelatedObjectTypes enum (it drives which
+ *     table RM looks the parent up in) and EntityKeyID is the record id.
  *   - The nested File is REQUIRED on create; its Content is a Byte[] carried as
  *     base64 in JSON. RM creates the File and back-fills FileID automatically.
  */
@@ -399,7 +399,7 @@ export async function attachReceipt(transactionId, fileBuffer, filename) {
       },
     },
   ];
-  const { body, location } = await request(`/CreditCardTransactions/${transactionId}/FileAttachments`, {
+  const { body, location } = await request('/FileAttachments', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
