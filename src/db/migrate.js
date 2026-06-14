@@ -272,6 +272,46 @@ const STATEMENTS = [
      created_at timestamptz DEFAULT now()
    )`,
   `CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id, is_read)`,
+
+  // --- Tasks redesign: richer model (subtasks, CC/watchers, tags, cost) ----
+  // New status/priority vocabulary from the redesign (Open/In Progress/Blocked/
+  // In Review/Done; Urgent/High/Medium/Low). Migrate legacy values.
+  `UPDATE tasks SET status = 'done' WHERE status IN ('completed','cancelled')`,
+  `UPDATE tasks SET priority = 'medium' WHERE priority = 'normal'`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS estimated_cost_cents int`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags jsonb NOT NULL DEFAULT '[]'::jsonb`,
+
+  `CREATE TABLE IF NOT EXISTS task_subtasks (
+     id serial PRIMARY KEY,
+     task_id int REFERENCES tasks(id) ON DELETE CASCADE,
+     label text NOT NULL,
+     done boolean NOT NULL DEFAULT false,
+     sort int DEFAULT 0,
+     created_at timestamptz DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS task_subtasks_task_idx ON task_subtasks (task_id)`,
+  `CREATE TABLE IF NOT EXISTS task_cc (
+     task_id int REFERENCES tasks(id) ON DELETE CASCADE,
+     user_id int REFERENCES users(id) ON DELETE CASCADE,
+     PRIMARY KEY (task_id, user_id)
+   )`,
+  `CREATE TABLE IF NOT EXISTS task_watchers (
+     task_id int REFERENCES tasks(id) ON DELETE CASCADE,
+     user_id int REFERENCES users(id) ON DELETE CASCADE,
+     PRIMARY KEY (task_id, user_id)
+   )`,
+
+  `ALTER TABLE task_comments ADD COLUMN IF NOT EXISTS mentions jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE task_attachments ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'file'`,
+  `ALTER TABLE task_attachments ADD COLUMN IF NOT EXISTS duration_sec int`,
+  `ALTER TABLE task_attachments ADD COLUMN IF NOT EXISTS comment_id int`,
+
+  // Categories from the redesign (added alongside any existing ones).
+  `INSERT INTO task_categories (name, sort) VALUES
+     ('Lease Renewal',1),('Maintenance',2),('Turnover / Make-ready',3),('Leasing',4),
+     ('Collections',5),('Inspection',6),('Compliance',7),('Accounts Payable',8),
+     ('Resident Request',9)
+   ON CONFLICT (name) DO NOTHING`,
 ];
 
 export async function runMigrations() {

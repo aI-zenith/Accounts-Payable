@@ -1,114 +1,112 @@
 <%
+  const PRIO = { urgent: 'Urgent', high: 'High', medium: 'Medium', low: 'Low' };
+  const STAT = { open: 'Open', in_progress: 'In Progress', blocked: 'Blocked', in_review: 'In Review', done: 'Done' };
+  const initials = (n) => { const p = String(n || '?').trim().split(/\s+/); return ((p[0][0] || '?') + (p[1] ? p[1][0] : '')).toUpperCase(); };
+  const AVC = ['#2b5fd9', '#7a4dd1', '#0f9d8f', '#c2611f', '#c0398a', '#3a7a3a', '#b5791a', '#d6453d'];
+  const avc = (n) => { let h = 0; for (const ch of String(n || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return AVC[h % AVC.length]; };
   const rec = task.recurrence && typeof task.recurrence === 'object' ? task.recurrence : (task.recurrence ? JSON.parse(task.recurrence) : null);
   const dueVal = task.due_at ? new Date(task.due_at).toISOString().slice(0, 16) : '';
-  const assignedIds = (task.assignees || []).map((a) => a.id);
+  const swatches = ['#8a909c', '#2b5fd9', '#2f9e6e', '#c2611f', '#c0398a'];
+  const tags = Array.isArray(task.tags) ? task.tags : [];
+  const cost = task.estimated_cost_cents != null ? (task.estimated_cost_cents / 100).toFixed(2) : '';
+  const chip = (a) => `<span class="tk-chip" data-id="${a.id}"><span class="av" style="width:21px;height:21px;background:${avc(a.name)};font-size:9px">${initials(a.name)}</span>${a.name}<span class="x" data-remove>×</span><input type="hidden" name="__NAME__" value="${a.id}"></span>`;
 %>
 
-<section class="page-head">
-  <a class="backlink" href="<%= isNew ? '/tasks' : '/tasks/' + task.id %>">← Back</a>
-  <h1 class="page-title"><%= isNew ? 'New task' : 'Edit task' %></h1>
-</section>
+<div class="tk">
+  <div class="tkform-wrap">
+    <a class="btng" href="<%= isNew ? '/tasks' : '/tasks?sel=' + task.id %>" style="margin-bottom:14px">← Back</a>
+    <form class="tkform" method="post" action="<%= isNew ? '/tasks' : '/tasks/' + task.id %>">
+      <div class="tkform__head">
+        <div><div class="tkform__crumb">Tasks · <%= isNew ? 'Create' : 'Edit' %></div><div class="tkform__title"><%= isNew ? 'New task' : 'Edit task' %></div></div>
+      </div>
 
-<form class="card taskform" method="post" action="<%= isNew ? '/tasks' : '/tasks/' + task.id %>">
-  <div class="fieldrow">
-    <label class="field" style="flex:2">
-      <span class="field__label">Title</span>
-      <input class="input" name="title" value="<%= task.title || '' %>" required autofocus />
-    </label>
-    <label class="field field--narrow">
-      <span class="field__label">Color</span>
-      <input class="input" type="color" name="color" value="<%= task.color || '#2b3340' %>" />
-    </label>
-  </div>
-
-  <label class="field">
-    <span class="field__label">Description</span>
-    <textarea class="input" name="description" rows="3"><%= task.description || '' %></textarea>
-  </label>
-
-  <div class="fieldrow">
-    <label class="field">
-      <span class="field__label">Category</span>
-      <select class="input" name="category">
-        <option value="">—</option>
-        <% categories.forEach((c)=>{ %><option value="<%= c.name %>" <%= task.category===c.name?'selected':'' %>><%= c.name %></option><% }) %>
-      </select>
-    </label>
-    <label class="field">
-      <span class="field__label">Priority</span>
-      <select class="input" name="priority"><% priorities.forEach((p)=>{ %><option value="<%= p %>" <%= task.priority===p?'selected':'' %>><%= p.charAt(0).toUpperCase()+p.slice(1) %></option><% }) %></select>
-    </label>
-    <label class="field">
-      <span class="field__label">Status</span>
-      <select class="input" name="status"><% statuses.forEach((s)=>{ %><option value="<%= s %>" <%= task.status===s?'selected':'' %>><%= s.replace('_',' ') %></option><% }) %></select>
-    </label>
-    <label class="field">
-      <span class="field__label">Due date &amp; time</span>
-      <input class="input" type="datetime-local" name="due_at" value="<%= dueVal %>" />
-    </label>
-  </div>
-
-  <fieldset class="field">
-    <span class="field__label">Assign to</span>
-    <div class="assignees">
-      <% users.forEach((u)=>{ %>
-        <label class="chk"><input type="checkbox" name="assignees" value="<%= u.id %>" <%= assignedIds.includes(u.id)?'checked':'' %> /> <%= u.name || u.email %></label>
-      <% }) %>
-    </div>
-  </fieldset>
-
-  <fieldset class="field">
-    <span class="field__label">Link a record (Rent Manager)</span>
-    <div class="fieldrow">
-      <label class="field field--narrow">
-        <span class="field__label">Type</span>
-        <select class="input" name="link_type" id="linkType">
-          <option value="">No link</option>
-          <% linkTypes.forEach((lt)=>{ %><option value="<%= lt %>" <%= task.link_type===lt?'selected':'' %>><%= lt.charAt(0).toUpperCase()+lt.slice(1) %></option><% }) %>
-        </select>
-      </label>
-      <label class="field">
-        <span class="field__label">Search</span>
-        <div class="inputwrap">
-          <input class="input" id="linkSearch" placeholder="Type a name — tenants, owners, prospects, vendors" autocomplete="off" />
-          <div class="linkresults" id="linkResults" hidden></div>
+      <div class="tkform__body">
+        <div class="tkrow">
+          <div class="tkfield"><span class="lbl">Title</span><input class="in" name="title" value="<%= task.title || '' %>" placeholder="What needs to get done?" required autofocus style="border-width:1.5px;border-color:#14181f" /></div>
+          <div class="tkfield tkfield--narrow">
+            <span class="lbl">Color</span>
+            <div class="tk-swatches" data-swatches>
+              <% swatches.forEach((c) => { %><span class="tk-swatch <%= task.color === c ? 'on' : '' %>" data-color="<%= c %>" style="background:<%= c %>;color:<%= c %>"></span><% }) %>
+            </div>
+            <input type="hidden" name="color" value="<%= task.color || '' %>" data-color-input />
+          </div>
         </div>
-      </label>
-      <label class="field">
-        <span class="field__label">Linked record</span>
-        <input class="input" name="link_name" id="linkName" placeholder="Selected name" value="<%= task.link_name || '' %>" />
-      </label>
-    </div>
-    <input type="hidden" name="link_id" id="linkId" value="<%= task.link_id || '' %>" />
-    <span class="field__hint">Pick a tenant, owner, prospect or vendor — or just type a name.</span>
-  </fieldset>
 
-  <fieldset class="field">
-    <span class="field__label">Recurring</span>
-    <div class="fieldrow">
-      <label class="field field--narrow">
-        <span class="field__label">Repeat</span>
-        <select class="input" name="rec_freq" id="recFreq">
-          <option value="">Does not repeat</option>
-          <% ['daily','weekly','monthly','yearly'].forEach((fq)=>{ %><option value="<%= fq %>" <%= rec&&rec.freq===fq?'selected':'' %>><%= fq.charAt(0).toUpperCase()+fq.slice(1) %></option><% }) %>
-        </select>
-      </label>
-      <label class="field field--narrow"><span class="field__label">Every</span><input class="input" type="number" name="rec_interval" min="1" value="<%= rec?rec.interval||1:1 %>" /></label>
-      <label class="field field--narrow">
-        <span class="field__label">Ends</span>
-        <select class="input" name="rec_end_type">
-          <option value="never" <%= !rec||rec.endType==='never'?'selected':'' %>>Never</option>
-          <option value="on" <%= rec&&rec.endType==='on'?'selected':'' %>>On date</option>
-          <option value="after" <%= rec&&rec.endType==='after'?'selected':'' %>>After N times</option>
-        </select>
-      </label>
-      <label class="field field--narrow"><span class="field__label">End date</span><input class="input" type="date" name="rec_end_on" value="<%= rec&&rec.endOn?String(rec.endOn).slice(0,10):'' %>" /></label>
-      <label class="field field--narrow"><span class="field__label">Times</span><input class="input" type="number" name="rec_count" min="1" value="<%= rec&&rec.count?rec.count:'' %>" /></label>
-    </div>
-  </fieldset>
+        <div class="tkfield">
+          <span class="lbl"><span>Description</span><span class="tkcc__polish" data-polish data-ctx="task description" data-target="desc">✦ Polish with AI</span></span>
+          <div style="position:relative">
+            <textarea class="in" name="description" rows="3" data-desc placeholder="Add details, context, links…"><%= task.description || '' %></textarea>
+            <div class="tkbusy" data-busy hidden><span class="tkspin"></span>Rewriting with AI…</div>
+            <div class="tkmenu" data-polish-menu hidden style="right:0;top:32px;left:auto">
+              <div class="lbl" style="padding:6px 10px 5px">Rewrite</div>
+              <div class="tkmenu__opt" data-mode="improve">Improve writing</div>
+              <div class="tkmenu__opt" data-mode="grammar">Fix spelling &amp; grammar</div>
+              <div class="tkmenu__opt" data-mode="shorten">Make shorter</div>
+              <div class="tkmenu__opt" data-mode="formal">More professional</div>
+            </div>
+          </div>
+        </div>
 
-  <div class="settings__actions">
-    <button class="btn btn--primary" type="submit"><%= isNew ? 'Create task' : 'Save task' %></button>
-    <a class="btn btn--ghost" href="<%= isNew ? '/tasks' : '/tasks/' + task.id %>">Cancel</a>
+        <div class="tkrow">
+          <div class="tkfield"><span class="lbl">Category</span><select class="in" name="category"><option value="">—</option><% categories.forEach((c) => { %><option value="<%= c.name %>" <%= task.category === c.name ? 'selected' : '' %>><%= c.name %></option><% }) %></select></div>
+          <div class="tkfield"><span class="lbl">Priority</span><select class="in" name="priority"><% priorities.forEach((p) => { %><option value="<%= p %>" <%= task.priority === p ? 'selected' : '' %>><%= PRIO[p] %></option><% }) %></select></div>
+          <div class="tkfield"><span class="lbl">Status</span><select class="in" name="status"><% statuses.forEach((s) => { %><option value="<%= s %>" <%= task.status === s ? 'selected' : '' %>><%= STAT[s] %></option><% }) %></select></div>
+          <div class="tkfield"><span class="lbl">Due date &amp; time</span><input class="in" type="datetime-local" name="due_at" value="<%= dueVal %>" /></div>
+        </div>
+
+        <div class="tkrow">
+          <div class="tkfield">
+            <span class="lbl">Assign to</span>
+            <div style="position:relative">
+              <div class="tk-chips" data-multi="assignees"><% (task.assignees || []).forEach((a) => { %><%- chip(a).replace('__NAME__', 'assignees') %><% }) %><span class="tk-add" data-add>+ Add</span></div>
+              <div class="tk-people" data-people hidden></div>
+            </div>
+          </div>
+          <div class="tkfield">
+            <span class="lbl">CC <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#bcc2cc">· keep in the loop</span></span>
+            <div style="position:relative">
+              <div class="tk-chips" data-multi="cc"><% (task.cc || []).forEach((a) => { %><%- chip(a).replace('__NAME__', 'cc') %><% }) %><span class="tk-add" data-add>+ CC people</span></div>
+              <div class="tk-people" data-people hidden></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tk-recur" style="background:#f7f8fa">
+          <div class="lbl" style="margin-bottom:10px">Link a record · Rent Manager</div>
+          <div class="tkrow">
+            <div class="tkfield tkfield--narrow"><span class="lbl">Type</span><select class="in" name="link_type" id="linkType"><option value="">No link</option><% linkTypes.forEach((lt) => { %><option value="<%= lt %>" <%= task.link_type === lt ? 'selected' : '' %>><%= lt.charAt(0).toUpperCase() + lt.slice(1) %></option><% }) %></select></div>
+            <div class="tkfield"><span class="lbl">Search</span><div class="inputwrap"><input class="in" id="linkSearch" placeholder="Type a name…" autocomplete="off" /><div class="linkresults" id="linkResults" hidden></div></div></div>
+            <div class="tkfield"><span class="lbl">Linked record</span><input class="in" name="link_name" id="linkName" value="<%= task.link_name || '' %>" placeholder="Selected record" /><input type="hidden" name="link_id" id="linkId" value="<%= task.link_id || '' %>" /></div>
+          </div>
+        </div>
+
+        <div class="tkrow">
+          <div class="tkfield"><span class="lbl">Tags</span><input class="in" name="tags" value="<%= tags.join(', ') %>" placeholder="Comma-separated, e.g. Renewal, Q3" /></div>
+          <div class="tkfield tkfield--narrow"><span class="lbl">Estimated cost</span><input class="in" name="estimated_cost" value="<%= cost %>" placeholder="0.00" inputmode="decimal" /></div>
+        </div>
+
+        <div class="tk-recur">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">
+            <span class="tk-toggle <%= rec ? 'on' : '' %>" data-recur-toggle><i></i></span>
+            <span style="font-size:12.5px;font-weight:600">Recurring task</span>
+            <input type="hidden" name="rec_on" value="<%= rec ? '1' : '' %>" data-recur-on />
+          </div>
+          <div class="tkrow" data-recur-fields style="opacity:<%= rec ? '1' : '.45' %>">
+            <div class="tkfield"><span class="lbl">Repeat</span><select class="in" name="rec_freq"><option value="">—</option><% ['daily','weekly','monthly','yearly'].forEach((f) => { %><option value="<%= f %>" <%= rec && rec.freq === f ? 'selected' : '' %>><%= f.charAt(0).toUpperCase() + f.slice(1) %></option><% }) %></select></div>
+            <div class="tkfield tkfield--narrow"><span class="lbl">Every</span><input class="in" type="number" name="rec_interval" min="1" value="<%= rec ? rec.interval || 1 : 1 %>" /></div>
+            <div class="tkfield"><span class="lbl">Ends</span><select class="in" name="rec_end_type"><option value="never" <%= !rec || rec.endType === 'never' ? 'selected' : '' %>>Never</option><option value="on" <%= rec && rec.endType === 'on' ? 'selected' : '' %>>On date</option><option value="after" <%= rec && rec.endType === 'after' ? 'selected' : '' %>>After</option></select></div>
+            <div class="tkfield tkfield--narrow"><span class="lbl">End date</span><input class="in" type="date" name="rec_end_on" value="<%= rec && rec.endOn ? String(rec.endOn).slice(0, 10) : '' %>" /></div>
+            <div class="tkfield tkfield--narrow"><span class="lbl">Times</span><input class="in" type="number" name="rec_count" min="1" value="<%= rec && rec.count ? rec.count : '' %>" /></div>
+          </div>
+        </div>
+
+        <% if (!isNew) { %><p class="lbl" style="text-transform:none;font-weight:500;color:#9aa0ab">Attachments, voice notes and screen recordings live on the task’s <a href="/tasks?sel=<%= task.id %>&tab=files">Files</a> tab.</p><% } %>
+      </div>
+
+      <div class="tkform__foot">
+        <button class="btnp" type="submit"><%= isNew ? 'Create task' : 'Save task' %></button>
+        <a class="btng" href="<%= isNew ? '/tasks' : '/tasks?sel=' + task.id %>">Cancel</a>
+      </div>
+    </form>
   </div>
-</form>
+</div>

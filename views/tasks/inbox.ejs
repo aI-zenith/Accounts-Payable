@@ -1,0 +1,74 @@
+<%
+  const PRC = { urgent: '#c0392b', high: '#c2611f', medium: '#2b5fd9', low: '#8a909c' };
+  const STAT = { open: 'Open', in_progress: 'In Progress', blocked: 'Blocked', in_review: 'In Review', done: 'Done' };
+  const initials = (n) => { const p = String(n || '?').trim().split(/\s+/); return ((p[0][0] || '?') + (p[1] ? p[1][0] : '')).toUpperCase(); };
+  const AVC = ['#2b5fd9', '#7a4dd1', '#0f9d8f', '#c2611f', '#c0398a', '#3a7a3a', '#b5791a', '#d6453d'];
+  const avc = (n) => { let h = 0; for (const ch of String(n || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return AVC[h % AVC.length]; };
+  const fmtD = (d) => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric' }) : '';
+  const dueLabel = (t) => { if (!t.due_at) return { t: '', c: '#8a909c' }; const ms = new Date(t.due_at) - Date.now(); if (t.status !== 'done' && ms < 0) return { t: 'Overdue', c: '#c0392b' }; if (ms < 86400000) return { t: 'Today', c: '#c0392b' }; if (ms < 3 * 86400000) return { t: fmtD(t.due_at), c: '#9a6b12' }; return { t: fmtD(t.due_at), c: '#5b6472' }; };
+  const rowUrl = (id) => '/tasks?sel=' + id + (seg !== 'all' ? '&seg=' + seg : '') + (q ? '&q=' + encodeURIComponent(q) : '') + '&tab=conversation';
+  const groupDefs = [['overdue', 'Overdue', '#c0392b'], ['today', 'Today', '#9a6b12'], ['upcoming', 'Upcoming', '#5b6472'], ['completed', 'Completed', '#2f9e6e']];
+%>
+
+<div class="tk">
+  <div class="tk-top">
+    <h1 class="tk-title">Tasks</h1>
+    <div class="tk-views">
+      <a class="on" href="/tasks">Inbox</a>
+      <a href="/tasks/board">Board</a>
+      <a href="/tasks/table">Table</a>
+    </div>
+    <div style="flex:1"></div>
+    <a class="btnp" href="/tasks/new"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 3v10M3 8h10" stroke-linecap="round"/></svg>New task</a>
+  </div>
+
+  <div class="tk-inbox">
+    <div class="tkin-list">
+      <form class="tkin-search" method="get" action="/tasks">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l3 3"/></svg>
+        <input name="q" value="<%= q %>" placeholder="Search tasks…" />
+        <% if (seg !== 'all') { %><input type="hidden" name="seg" value="<%= seg %>" /><% } %>
+      </form>
+      <div class="tkin-segs">
+        <a class="tkin-seg <%= seg === 'all' ? 'on' : '' %>" href="/tasks<%= q ? '?q=' + encodeURIComponent(q) : '' %>">All<span><%= counts.all %></span></a>
+        <a class="tkin-seg <%= seg === 'mine' ? 'on' : '' %>" href="/tasks?seg=mine<%= q ? '&q=' + encodeURIComponent(q) : '' %>">Mine<span><%= counts.mine %></span></a>
+        <a class="tkin-seg <%= seg === 'unassigned' ? 'on' : '' %>" href="/tasks?seg=unassigned<%= q ? '&q=' + encodeURIComponent(q) : '' %>">Unassigned<span><%= counts.unassigned %></span></a>
+      </div>
+      <div class="tkin-rows">
+        <% groupDefs.forEach(([key, label, color]) => { const list = groups[key]; if (!list.length) return; %>
+          <div class="tkin-gh" style="color:<%= color %>"><%= label %> · <%= list.length %></div>
+          <% list.forEach((t) => { const dl = dueLabel(t); const on = task && task.id === t.id; %>
+            <a class="tkin-row <%= on ? 'on' : '' %>" href="<%= rowUrl(t.id) %>">
+              <span class="tkin-psq" style="background:<%= PRC[t.priority] %>"></span>
+              <div class="tkin-rmain">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span class="tkin-rtitle" style="flex:1;<%= on ? 'font-weight:700' : '' %>"><%= t.title %></span>
+                  <% if (t.assignees[0]) { %><span class="av" style="width:22px;height:22px;background:<%= avc(t.assignees[0].name) %>;font-size:9px"><%= initials(t.assignees[0].name) %></span><% } %>
+                </div>
+                <div class="tkin-rsub">
+                  <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><%= t.link_name ? (t.link_type + ' · ' + t.link_name) : (t.category || '—') %></span>
+                  <% if (dl.t) { %><span style="font-weight:600;color:<%= dl.c %>"><%= dl.t %></span><% } %>
+                </div>
+                <div class="tkin-rmeta">
+                  <span class="tps tps-<%= t.status %>"><%= STAT[t.status] %></span>
+                  <span style="font-size:10.5px;color:#9aa0ab"><%= t.category || '' %></span>
+                </div>
+              </div>
+            </a>
+          <% }) %>
+        <% }) %>
+        <% if (!groups.overdue.length && !groups.today.length && !groups.upcoming.length && !groups.completed.length) { %>
+          <div style="padding:40px 18px;text-align:center;color:#9aa0ab;font-size:13px">No tasks. Create one with “New task”.</div>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="tkin-detail">
+      <% if (task) { %>
+        <%- include('../partials/task-detail', { task, tab, currentUser }) %>
+      <% } else { %>
+        <div class="tkd-empty">Select a task to see the conversation.</div>
+      <% } %>
+    </div>
+  </div>
+</div>

@@ -17,10 +17,10 @@
   const taskRow = (t) => `<li class="taskrow ${overdue(t) ? 'is-overdue' : ''}"><a href="/tasks/${t.id}">${esc(t.title)}</a><span class="taskrow__meta"><span class="pill prio-${t.priority}">${t.priority}</span>${t.due_at ? `<span class="${overdue(t) ? 'overdue-text' : ''}">${fmtDueShort(t.due_at)}</span>` : ''}</span></li>`;
 %>
 <section class="statcards">
-  <a class="statcard" href="/tasks?openOnly=1"><span class="statcard__n"><%= tasks.counts.open + tasks.counts.in_progress %></span><span class="statcard__l">Open tasks</span></a>
-  <a class="statcard statcard--warn" href="/tasks?openOnly=1&sort=due_at"><span class="statcard__n"><%= tasks.counts.overdue %></span><span class="statcard__l">Overdue</span></a>
+  <a class="statcard" href="/tasks/table?openOnly=1"><span class="statcard__n"><%= tasks.counts.open + tasks.counts.in_progress + tasks.counts.blocked + tasks.counts.in_review %></span><span class="statcard__l">Open tasks</span></a>
+  <a class="statcard statcard--warn" href="/tasks/table?openOnly=1&sort=due_at"><span class="statcard__n"><%= tasks.counts.overdue %></span><span class="statcard__l">Overdue</span></a>
   <a class="statcard" href="/tasks"><span class="statcard__n"><%= tasks.due.length %></span><span class="statcard__l">Due ≤ 7 days</span></a>
-  <a class="statcard" href="/tasks?status=completed"><span class="statcard__n"><%= tasks.counts.completed %></span><span class="statcard__l">Completed</span></a>
+  <a class="statcard" href="/tasks/table?status=done"><span class="statcard__n"><%= tasks.counts.done %></span><span class="statcard__l">Completed</span></a>
 </section>
 
 <div class="grid-2">

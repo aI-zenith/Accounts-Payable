@@ -4,6 +4,7 @@ import * as Tasks from '../services/tasks.js';
 import { addReminder } from '../services/reminders.js';
 import { listUsers } from '../services/users.js';
 import { searchRmEntities, searchAllEntities } from '../services/rmClient.js';
+import { polish } from '../services/aiPolish.js';
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -38,7 +39,7 @@ function queryString(f) {
 function parseBody(b) {
   const toArr = (v) => (Array.isArray(v) ? v : v == null || v === '' ? [] : [v]);
   let recurrence = null;
-  if (b.rec_freq) {
+  if (b.rec_on && b.rec_freq) {
     recurrence = {
       freq: b.rec_freq,
       interval: Number(b.rec_interval) || 1,
@@ -56,6 +57,10 @@ function parseBody(b) {
     color: b.color || null,
     due_at: b.due_at ? b.due_at : null,
     assignees: toArr(b.assignees),
+    cc: toArr(b.cc),
+    watchers: toArr(b.watchers),
+    tags: b.tags || '',
+    estimated_cost: b.estimated_cost || '',
     recurrence,
     link_type: b.link_type || null,
     link_id: b.link_id || null,
@@ -74,9 +79,47 @@ async function formContext() {
   };
 }
 
-// --- GET /tasks : table list ----------------------------------------------
+// --- GET /tasks : Split Inbox (primary) -----------------------------------
 router.get(
   '/',
+  wrap(async (req, res) => {
+    const seg = ['all', 'mine', 'unassigned'].includes(req.query.seg) ? req.query.seg : 'all';
+    const q = req.query.q || '';
+    const tab = ['conversation', 'checklist', 'files', 'activity'].includes(req.query.tab)
+      ? req.query.tab
+      : 'conversation';
+    const groups = await Tasks.groupInbox(req.user, { seg, q });
+    const flat = [...groups.overdue, ...groups.today, ...groups.upcoming, ...groups.completed];
+    const selId = req.query.sel ? Number(req.query.sel) : flat[0] ? flat[0].id : null;
+    let task = null;
+    if (selId) {
+      task = await Tasks.getTask(selId, req.user);
+      if (task && task.forbidden) task = null;
+    }
+    const ctx = await formContext();
+    res.render('tasks/inbox', {
+      title: 'Tasks',
+      active: 'tasks',
+      taskActive: 'inbox',
+      groups,
+      counts: {
+        all: flat.length,
+        mine: flat.filter((t) => t.assignees.some((a) => a.id === req.user.id)).length,
+        unassigned: flat.filter((t) => t.assignees.length === 0).length,
+      },
+      seg,
+      q,
+      task,
+      tab,
+      ...ctx,
+      notice: req.query.notice || null,
+    });
+  })
+);
+
+// --- GET /tasks/table : table list (alternate) ----------------------------
+router.get(
+  '/table',
   wrap(async (req, res) => {
     const filters = parseFilters(req.query);
     const [tasks, ctx, saved] = await Promise.all([
@@ -87,7 +130,7 @@ router.get(
     res.render('tasks/list', {
       title: 'Tasks',
       active: 'tasks',
-      taskActive: 'list',
+      taskActive: 'table',
       tasks,
       filters,
       qs: queryString(filters),
@@ -95,6 +138,29 @@ router.get(
       ...ctx,
       notice: req.query.notice || null,
     });
+  })
+);
+
+// --- AI polish (description / comment) ------------------------------------
+router.post(
+  '/ai/polish',
+  wrap(async (req, res) => {
+    const { text, mode, context } = req.body;
+    const out = await polish(text || '', mode || 'improve', context || 'task description');
+    res.json({ ok: true, text: out });
+  })
+);
+
+// --- people search (assignees / CC) ---------------------------------------
+router.get(
+  '/people',
+  wrap(async (req, res) => {
+    const needle = String(req.query.q || '').toLowerCase();
+    const users = await listUsers();
+    const out = users
+      .filter((u) => !needle || (u.name || u.email).toLowerCase().includes(needle))
+      .map((u) => ({ id: u.id, name: u.name || u.email, role: u.role_name || '' }));
+    res.json({ ok: true, results: out });
   })
 );
 
@@ -186,7 +252,7 @@ router.get(
       title: 'New task',
       active: 'tasks',
       taskActive: 'list',
-      task: { priority: 'normal', status: 'open', assignees: [] },
+      task: { priority: 'medium', status: 'open', assignees: [], cc: [], tags: [] },
       isNew: true,
       ...(await formContext()),
     });
@@ -232,32 +298,8 @@ router.post(
   })
 );
 
-// --- GET /tasks/:id : detail ----------------------------------------------
-router.get(
-  '/:id',
-  wrap(async (req, res) => {
-    const id = Number(req.params.id);
-    const task = await Tasks.getTask(id, req.user);
-    if (!task) {
-      const e = new Error('Task not found.');
-      e.status = 404;
-      throw e;
-    }
-    if (task.forbidden) {
-      const e = new Error('You can only see tasks assigned to you.');
-      e.status = 403;
-      throw e;
-    }
-    res.render('tasks/detail', {
-      title: task.title,
-      active: 'tasks',
-      taskActive: 'list',
-      task,
-      ...(await formContext()),
-      notice: req.query.notice || null,
-    });
-  })
-);
+// --- GET /tasks/:id : open the task in the inbox ---------------------------
+router.get('/:id', (req, res) => res.redirect(`/tasks?sel=${Number(req.params.id)}`));
 
 // --- GET /tasks/:id/edit ---------------------------------------------------
 router.get(
@@ -323,10 +365,41 @@ router.post(
 );
 router.post(
   '/:id/comment',
+  upload.single('file'),
   wrap(async (req, res) => {
     const id = Number(req.params.id);
-    await Tasks.addComment(id, req.user, req.body.body);
-    res.redirect(`/tasks/${id}#activity`);
+    const ment = (Array.isArray(req.body.mentions) ? req.body.mentions : req.body.mentions ? [req.body.mentions] : [])
+      .map(Number)
+      .filter(Boolean);
+    const cid = await Tasks.addComment(id, req.user, req.body.body, ment);
+    if (req.file) {
+      await Tasks.addAttachment(id, req.file, req.user, {
+        kind: ['voice', 'screen'].includes(req.body.kind) ? req.body.kind : 'file',
+        duration_sec: req.body.duration ? Number(req.body.duration) : null,
+        comment_id: cid,
+      });
+    }
+    res.redirect(`/tasks?sel=${id}&tab=conversation`);
+  })
+);
+
+// --- subtasks / checklist --------------------------------------------------
+router.post(
+  '/:id/subtask',
+  wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    await Tasks.addSubtask(id, req.body.label, req.user);
+    res.redirect(`/tasks?sel=${id}&tab=checklist`);
+  })
+);
+router.post(
+  '/subtask/:sid/toggle',
+  wrap(async (req, res) => {
+    const r = await Tasks.toggleSubtask(Number(req.params.sid), req.user);
+    if (req.headers.accept && req.headers.accept.includes('application/json')) {
+      return res.json({ ok: true, done: r ? r.done : null });
+    }
+    res.redirect(req.body.back || '/tasks');
   })
 );
 router.post(
@@ -334,8 +407,13 @@ router.post(
   upload.single('file'),
   wrap(async (req, res) => {
     const id = Number(req.params.id);
-    if (req.file) await Tasks.addAttachment(id, req.file, req.user);
-    res.redirect(`/tasks/${id}`);
+    if (req.file) {
+      await Tasks.addAttachment(id, req.file, req.user, {
+        kind: ['voice', 'screen'].includes(req.body.kind) ? req.body.kind : 'file',
+        duration_sec: req.body.duration ? Number(req.body.duration) : null,
+      });
+    }
+    res.redirect(req.body.back || `/tasks?sel=${id}&tab=files`);
   })
 );
 router.get(

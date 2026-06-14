@@ -1,0 +1,51 @@
+<% const me = (currentUser.name || currentUser.email || '?').trim().slice(0, 1).toUpperCase(); %>
+<form class="tkcc" method="post" action="/tasks/<%= task.id %>/comment" enctype="multipart/form-data" data-composer>
+  <span class="av" style="width:33px;height:33px;background:#2b5fd9;font-size:11px;"><%= me %></span>
+  <div class="tkcc__box">
+    <div style="position:relative">
+      <textarea class="tkcc__ta" name="body" placeholder="Write a comment… use @ to mention a teammate" data-text required></textarea>
+      <div class="tkbusy" data-busy hidden><span class="tkspin"></span>Polishing…</div>
+    </div>
+
+    <div class="tkrec" data-rec hidden>
+      <span class="tkrec__dot"></span>
+      <span style="font-size:12px;font-weight:600;color:#b23b30" data-rec-label>Recording…</span>
+      <div style="flex:1"></div>
+      <span class="tkrec__time" data-rec-time>0:00</span>
+      <button type="button" class="btnp" style="padding:5px 11px;font-size:11.5px" data-rec-stop>Attach</button>
+      <button type="button" style="background:none;border:none;color:#b23b30;cursor:pointer;font-size:15px" data-rec-cancel>×</button>
+    </div>
+    <div data-media-list style="display:flex;flex-wrap:wrap"></div>
+
+    <input type="file" name="file" hidden data-file />
+    <input type="hidden" name="kind" value="file" data-kind />
+    <input type="hidden" name="duration" data-duration />
+
+    <div class="tkcc__tools">
+      <button type="button" class="tkcc__tool" data-attach title="Attach a file">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 7l-4.6 4.6a2.4 2.4 0 0 1-3.4-3.4l5-5a1.6 1.6 0 0 1 2.3 2.3l-4.8 4.8a.8.8 0 0 1-1.2-1.1L9.6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button type="button" class="tkcc__tool" data-voice title="Record voice note">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="6" y="2" width="4" height="7" rx="2"/><path d="M4 7.5a4 4 0 0 0 8 0M8 11.5V14" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" class="tkcc__tool" data-screen title="Record screen">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="8" rx="1.5"/><path d="M6 14h4M8 11v3" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" class="tkcc__tool" data-mention title="Mention" style="font-weight:700;font-size:15px">@</button>
+      <div style="position:relative">
+        <button type="button" class="tkcc__polish" data-polish data-ctx="work comment">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.2l1.5 4.1 4.1 1.5-4.1 1.5L8 12.4 6.5 8.3 2.4 6.8l4.1-1.5z"/></svg>Polish
+        </button>
+        <div class="tkmenu" data-polish-menu hidden style="left:0;bottom:38px">
+          <div class="lbl" style="padding:6px 10px 5px">Rewrite comment</div>
+          <div class="tkmenu__opt" data-mode="improve">Improve writing</div>
+          <div class="tkmenu__opt" data-mode="grammar">Fix spelling &amp; grammar</div>
+          <div class="tkmenu__opt" data-mode="shorten">Make shorter</div>
+          <div class="tkmenu__opt" data-mode="friendly">More friendly</div>
+        </div>
+      </div>
+      <div style="flex:1"></div>
+      <button type="submit" class="tkcc__send"><%= typeof sendLabel !== 'undefined' ? sendLabel : 'Send' %></button>
+    </div>
+  </div>
+</form>

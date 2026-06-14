@@ -1,9 +1,9 @@
 <%
-  const PRIO = { low: 'Low', normal: 'Normal', high: 'High', urgent: 'Urgent' };
-  const STAT = { open: 'Open', in_progress: 'In Progress', completed: 'Completed', cancelled: 'Cancelled' };
+  const PRIO = { urgent: 'Urgent', high: 'High', medium: 'Medium', low: 'Low' };
+  const STAT = { open: 'Open', in_progress: 'In Progress', blocked: 'Blocked', in_review: 'In Review', done: 'Done' };
   const fmtDue = (d) => { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
   const isOverdue = (t) => t.due_at && new Date(t.due_at) < new Date() && (t.status === 'open' || t.status === 'in_progress');
-  const sortLink = (col) => { const dir = (filters.sort === col && filters.dir === 'asc') ? 'desc' : 'asc'; const p = new URLSearchParams(qs); p.set('sort', col); p.set('dir', dir); return '/tasks?' + p.toString(); };
+  const sortLink = (col) => { const dir = (filters.sort === col && filters.dir === 'asc') ? 'desc' : 'asc'; const p = new URLSearchParams(qs); p.set('sort', col); p.set('dir', dir); return '/tasks/table?' + p.toString(); };
 %>
 
 <section class="page-head page-head--row">
@@ -16,7 +16,7 @@
 
 <%- include('../partials/task-nav') %>
 
-<form class="taskfilters" method="get" action="/tasks">
+<form class="taskfilters" method="get" action="/tasks/table">
   <input class="input" type="search" name="q" value="<%= filters.q %>" placeholder="Search title or description" />
   <select class="input" name="status"><option value="">Any status</option><% Object.entries(STAT).forEach(([k,v])=>{ %><option value="<%= k %>" <%= filters.status===k?'selected':'' %>><%= v %></option><% }) %></select>
   <select class="input" name="priority"><option value="">Any priority</option><% Object.entries(PRIO).forEach(([k,v])=>{ %><option value="<%= k %>" <%= filters.priority===k?'selected':'' %>><%= v %></option><% }) %></select>
@@ -25,7 +25,7 @@
   <label class="chk"><input type="checkbox" name="openOnly" <%= filters.openOnly?'checked':'' %> /> Open only</label>
   <label class="chk"><input type="checkbox" name="hasTenant" <%= filters.hasTenant?'checked':'' %> /> Has tenant</label>
   <button class="btn btn--ghost btn--sm" type="submit">Apply</button>
-  <a class="btn btn--ghost btn--sm" href="/tasks">Reset</a>
+  <a class="btn btn--ghost btn--sm" href="/tasks/table">Reset</a>
 </form>
 
 <div class="taskbar">
@@ -33,7 +33,7 @@
     <% if (saved.length) { %>
       <span class="hint">Saved:</span>
       <% saved.forEach((s)=>{ const p=new URLSearchParams(s.query||{}); %>
-        <a class="chip" href="/tasks?<%= p.toString() %>"><%= s.name %></a>
+        <a class="chip" href="/tasks/table?<%= p.toString() %>"><%= s.name %></a>
       <% }) %>
     <% } %>
     <form method="post" action="/tasks/filters" class="savefilter">
@@ -94,7 +94,7 @@
             <td data-col="assignees"><%= t.assignees.map((a)=>a.name).join(', ') || '—' %></td>
             <td data-col="linked"><% if (t.link_name) { %><span class="tag"><%= t.link_type %></span> <%= t.link_name %><% } else { %>—<% } %></td>
             <td class="actions-col">
-              <form method="post" action="/tasks/<%= t.id %>/snooze" class="inline"><input type="hidden" name="back" value="/tasks" /><button class="linkbtn" title="Snooze 7 days">Snooze</button></form>
+              <form method="post" action="/tasks/<%= t.id %>/snooze" class="inline"><input type="hidden" name="back" value="/tasks/table" /><button class="linkbtn" title="Snooze 7 days">Snooze</button></form>
             </td>
           </tr>
         <% }) %>

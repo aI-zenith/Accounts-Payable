@@ -1,6 +1,6 @@
 <%
-  const PRIO = { low: 'Low', normal: 'Normal', high: 'High', urgent: 'Urgent' };
-  const STAT = { open: 'Open', in_progress: 'In Progress', completed: 'Completed', cancelled: 'Cancelled' };
+  const PRIO = { urgent: 'Urgent', high: 'High', medium: 'Medium', low: 'Low' };
+  const STAT = { open: 'Open', in_progress: 'In Progress', blocked: 'Blocked', in_review: 'In Review', done: 'Done' };
   const fmt = (d) => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
   const isOverdue = task.due_at && new Date(task.due_at) < new Date() && (task.status === 'open' || task.status === 'in_progress');
   const who = (r) => r.name || r.email || 'Someone';
