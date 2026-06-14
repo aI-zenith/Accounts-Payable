@@ -10,9 +10,9 @@
   --paper-raised: #ffffff;
   --line: #e7e9ee;         /* hairline border */
   --line-strong: #d6dae1;
-  --accent: #2f6df0;       /* modern blue accent */
-  --accent-deep: #1f55cc;
-  --accent-wash: #eaf1fe;
+  --accent: #2b3340;       /* graphite — matches the Zenith mark */
+  --accent-deep: #161a21;
+  --accent-wash: #eef0f3;
 
   /* sidebar — charcoal, echoes the Zenith mark */
   --side: #1a1f29;
@@ -20,6 +20,7 @@
   --side-line: rgba(255, 255, 255, 0.09);
   --side-ink: #e7eaf1;
   --side-muted: #98a1b2;
+  --side-accent: #c2c8d2;  /* light silver for the active indicator */
 
   /* semantic status */
   --slate: #6b7488;
