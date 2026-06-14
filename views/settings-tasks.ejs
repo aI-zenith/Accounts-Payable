@@ -48,4 +48,20 @@
       <% } else { %>Email delivery is not configured. Set <code>SMTP_HOST</code> (and <code>SMTP_USER</code>/<code>SMTP_PASS</code>) to enable reminder emails. On-screen reminders work without it.<% } %>
     </p>
   </section>
+
+  <section class="card" data-integration="tenants">
+    <header class="card__head">
+      <div class="card__title">
+        <span class="dot" data-dot aria-hidden="true"></span>
+        <h2>Rent Manager tenant feed</h2>
+      </div>
+      <button type="button" class="btn btn--ghost btn--sm" data-test="tenants">Test connection</button>
+    </header>
+    <p class="card__status" data-status hidden></p>
+    <p class="hint">
+      Used when linking a tenant to a task. This reads <code>/Tenants</code> from Rent Manager
+      (read-only) using the credentials in <a href="/settings/accounts-payable">Accounts Payable</a>.
+      A green result means the live tenant list is reachable.
+    </p>
+  </section>
 </div>
