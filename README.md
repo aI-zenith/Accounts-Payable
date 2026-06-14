@@ -74,12 +74,17 @@ resolves the credit card, vendor, and property, then `POST`s a
   units (`/Units?filter=PropertyID,eq,…`, falling back to `?embeds=Units`).
 
 After the transaction is created, the original PDF is attached via
-`attachReceipt` — the receipt bytes are sent as base64 `File.Content` (per the
-WAPI FileAttachmentModel). The attach is best-effort and non-fatal: the
-transaction already exists, so a failed attach is surfaced as a note rather than
-re-pushed (which would double-charge). The new attachment id is saved to
-`rm_attachment_id`, and an already-pushed invoice is never re-created — it only
-(re)attaches if the receipt is missing.
+`attachReceipt`. Attachments don't live on the WAPI host — they go through the
+RM web app (`rmx`) host, which uses an **ASP.NET session** (not the WAPI token):
+the client logs in (`POST /api/ExpressAuthentication/Authenticate` with the RM
+credentials) to get an `ASP.NET_SessionId` cookie, then POSTs the receipt as
+`multipart/form-data` to `/api/CreditCardTransactions/{id}/Attachments` (a
+`dataModel` JSON string `{ EntityKeyID, EntityType: 38, Description }` plus the
+file part). The session is cached and re-established on expiry/401. The attach is
+best-effort and non-fatal: the transaction already exists, so a failed attach is
+surfaced as a note rather than re-pushed (which would double-charge). The new
+attachment id is saved to `rm_attachment_id`, and an already-pushed invoice is
+never re-created — it only (re)attaches if the receipt is missing.
 
 The property/expense **allocation** rides on the transaction's required
 `CreditCardTransactionDetails` (PropertyID + GLAccountID + Amount), so each push
