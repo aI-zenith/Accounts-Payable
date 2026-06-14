@@ -303,9 +303,12 @@ router.get(
       '/CreditCardTransactions/1?embeds=CreditCardTransactionGLAllocations',
       '/CreditCardTransactions/1?embeds=Details',
       '/CreditCardTransactions/1?embeds=Lines',
-      // Hunt for the attachment endpoint/structure.
+      // Hunt for the attachment endpoint/structure + the exact EntityType the
+      // account uses for a credit card transaction's file attachments.
+      '/CreditCardTransactions/1?embeds=FileAttachments',
       '/CreditCardTransactions/1?embeds=Attachments',
       '/CreditCardTransactions/1?embeds=Files',
+      '/FileAttachments?pageSize=5',
       '/Attachments?pageSize=1',
       '/Files?pageSize=1',
     ];
