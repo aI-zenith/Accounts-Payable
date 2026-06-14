@@ -265,6 +265,99 @@ router.post(
   })
 );
 
+// --- GET /settings/attach-probe -------------------------------------------
+// TEMPORARY diagnostic to nail down the exact credit-card-transaction
+// attachment payload. Two parts:
+//   1) Read-only: scan existing CCTs for one that already HAS an attachment and
+//      return its exact field shape (the authoritative model to mirror).
+//   2) Optional write: with ?txn=<id>, POST a real receipt several ways and
+//      report which variant RM accepts. The first variant that returns ok is the
+//      answer. Remove this route once the attach is wired.
+router.get(
+  '/settings/attach-probe',
+  wrap(async (req, res) => {
+    const out = {};
+
+    // 1) Hunt for an existing attachment to copy its structure exactly.
+    try {
+      const samples = [];
+      let scanned = 0;
+      for (let page = 1; page <= 6 && samples.length < 3; page++) {
+        const { body } = await request(
+          `/CreditCardTransactions?embeds=Attachments&pageSize=200&pageNumber=${page}`
+        );
+        const list = Array.isArray(body) ? body : body ? [body] : [];
+        scanned += list.length;
+        for (const t of list) {
+          if (Array.isArray(t.Attachments) && t.Attachments.length && samples.length < 3) {
+            samples.push({
+              CreditCardTransactionID: t.ID,
+              attachmentKeys: Object.keys(t.Attachments[0] || {}),
+              attachment: t.Attachments[0],
+            });
+          }
+        }
+        if (list.length < 200) break; // last page
+      }
+      out.existingAttachmentSamples = { scanned, found: samples.length, samples };
+    } catch (err) {
+      out.existingAttachmentSamples = { error: err.message };
+    }
+
+    // 2) Optional: try POSTing to ?txn with several body variants.
+    const txn = req.query.txn ? Number(req.query.txn) : null;
+    if (txn) {
+      // Prefer the real stored receipt for this transaction; else a tiny stub.
+      let bytes;
+      let fname = 'probe.pdf';
+      try {
+        const { rows } = await query(
+          'SELECT file_data, original_name FROM invoices WHERE rm_project_id = $1 LIMIT 1',
+          [String(txn)]
+        );
+        if (rows[0]?.file_data) {
+          bytes = rows[0].file_data;
+          fname = rows[0].original_name || fname;
+        }
+      } catch {
+        /* fall through to stub */
+      }
+      if (!bytes) bytes = Buffer.from('%PDF-1.4\n%%EOF\n', 'utf8');
+      const content = Buffer.isBuffer(bytes) ? bytes.toString('base64') : String(bytes);
+      const file = { Name: fname, Extension: 'pdf', Content: content };
+      const url = `/CreditCardTransactions/${txn}/Attachments`;
+
+      const variants = [
+        { label: 'array, no EntityType, File', body: [{ Description: fname, File: file }] },
+        { label: 'object, no EntityType, File', body: { Description: fname, File: file } },
+        {
+          label: 'array, EntityType+EntityKeyID, File',
+          body: [{ EntityType: 'CreditCardTransaction', EntityKeyID: txn, Description: fname, File: file }],
+        },
+        { label: 'array, Files[] (plural)', body: [{ Description: fname, Files: [file] }] },
+        { label: 'array, File w/ FileName', body: [{ Description: fname, File: { FileName: fname, Extension: 'pdf', Content: content } }] },
+      ];
+
+      out.postAttempts = [];
+      for (const v of variants) {
+        try {
+          const r = await request(url, { method: 'POST', body: JSON.stringify(v.body) });
+          out.postAttempts.push({ variant: v.label, ok: true, status: r.status, body: r.body });
+        } catch (err) {
+          out.postAttempts.push({
+            variant: v.label,
+            ok: false,
+            status: err.status ?? null,
+            error: String(err.message).slice(0, 400),
+          });
+        }
+      }
+    }
+
+    res.json(out);
+  })
+);
+
 // --- GET /settings/rm-discovery -------------------------------------------
 // TEMPORARY diagnostic: authenticates and reads a few read-only endpoints so we
 // can see the exact fields needed to build an Accounts Payable bill + attach the
