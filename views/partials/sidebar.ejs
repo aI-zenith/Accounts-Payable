@@ -1,8 +1,10 @@
 <%
   const apActive = ['dashboard', 'reconcile'].includes(active);
   const homeActive = active === 'home';
+  const tasksActive = active === 'tasks';
   const ic = {
     home: '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>',
+    task: '<path d="M5 5h14v14H5z" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M8.5 12l2.2 2.2L16 9" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
     ap: '<path d="M4 4h16v4H4zM4 11h16M4 16h10" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
     prop: '<path d="M4 10l8-6 8 6v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>',
     res: '<circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M5 19c1-3.5 4-5 7-5s6 1.5 7 5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
@@ -33,6 +35,21 @@
 
     <div class="navgroup">
       <div class="navgroup__label">Modules</div>
+
+      <% if (can('tasks')) { %>
+      <a class="navlink <%= tasksActive ? 'is-active' : '' %>" href="/tasks">
+        <svg class="navlink__icon" viewBox="0 0 24 24"><%- ic.task %></svg>
+        Tasks
+      </a>
+      <% if (tasksActive) { %>
+        <div class="navsub">
+          <a class="navsub__link <%= taskActive === 'list' ? 'is-active' : '' %>" href="/tasks">All tasks</a>
+          <a class="navsub__link <%= taskActive === 'board' ? 'is-active' : '' %>" href="/tasks/board">Board</a>
+          <a class="navsub__link <%= taskActive === 'snoozed' ? 'is-active' : '' %>" href="/tasks/snoozed">Snoozed</a>
+          <a class="navsub__link <%= taskActive === 'reminders' ? 'is-active' : '' %>" href="/reminders">My Reminders</a>
+        </div>
+      <% } %>
+      <% } %>
 
       <% if (can('accounts_payable')) { %>
       <a class="navlink <%= apActive ? 'is-active' : '' %>" href="/invoices">

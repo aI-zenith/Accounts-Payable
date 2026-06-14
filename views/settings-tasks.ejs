@@ -1,0 +1,51 @@
+<section class="page-head">
+  <h1 class="page-title">Settings</h1>
+  <p class="page-sub">Configuration is grouped by module.</p>
+</section>
+
+<%- include('partials/settings-nav') %>
+
+<section class="settings-section">
+  <h2 class="settings-section__title">Tasks</h2>
+  <p class="settings-section__sub">Manage task categories and review notification delivery.</p>
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <h2 class="card__h">Categories</h2>
+    <ul class="userlist">
+      <% categories.forEach((c)=>{ %>
+        <li class="useritem" style="grid-template-columns: 1fr auto; grid-template-areas: 'main actions';">
+          <div class="useritem__main" style="grid-area:main">
+            <div>
+              <div class="useritem__name"><%= c.name %> <% if (!c.is_active) { %><span class="tag">hidden</span><% } %></div>
+            </div>
+          </div>
+          <div class="useritem__actions" style="grid-area:actions">
+            <% if (c.is_active) { %>
+              <form method="post" action="/settings/tasks/categories/<%= c.id %>/delete" onsubmit="return confirm('Remove “<%= c.name %>” from the picker?');">
+                <button class="linkbtn linkbtn--danger" type="submit">Remove</button>
+              </form>
+            <% } %>
+          </div>
+        </li>
+      <% }) %>
+    </ul>
+    <form method="post" action="/settings/tasks/categories" class="fieldrow" style="margin-top:14px">
+      <label class="field"><span class="field__label">New category</span><input class="input" name="name" placeholder="e.g. Insurance" required /></label>
+      <div class="field field--narrow" style="justify-content:flex-end"><button class="btn btn--ghost" type="submit">Add</button></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2 class="card__h">Notifications</h2>
+    <p class="hint" style="margin-bottom:10px">
+      In-app notifications are created when a task is assigned to you or updated. Personal
+      reminders can show on-screen at sign-in and/or be emailed.
+    </p>
+    <p class="card__status <%= mailerOn ? 'is-ok' : '' %>" style="display:block">
+      <% if (mailerOn) { %>Email delivery is configured (SMTP). Reminder emails and daily follow-ups will send.
+      <% } else { %>Email delivery is not configured. Set <code>SMTP_HOST</code> (and <code>SMTP_USER</code>/<code>SMTP_PASS</code>) to enable reminder emails. On-screen reminders work without it.<% } %>
+    </p>
+  </section>
+</div>

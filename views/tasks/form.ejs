@@ -1,0 +1,101 @@
+<%
+  const rec = task.recurrence && typeof task.recurrence === 'object' ? task.recurrence : (task.recurrence ? JSON.parse(task.recurrence) : null);
+  const dueVal = task.due_at ? new Date(task.due_at).toISOString().slice(0, 16) : '';
+  const assignedIds = (task.assignees || []).map((a) => a.id);
+%>
+
+<section class="page-head">
+  <a class="backlink" href="<%= isNew ? '/tasks' : '/tasks/' + task.id %>">← Back</a>
+  <h1 class="page-title"><%= isNew ? 'New task' : 'Edit task' %></h1>
+</section>
+
+<form class="card taskform" method="post" action="<%= isNew ? '/tasks' : '/tasks/' + task.id %>">
+  <div class="fieldrow">
+    <label class="field" style="flex:2">
+      <span class="field__label">Title</span>
+      <input class="input" name="title" value="<%= task.title || '' %>" required autofocus />
+    </label>
+    <label class="field field--narrow">
+      <span class="field__label">Color</span>
+      <input class="input" type="color" name="color" value="<%= task.color || '#2b3340' %>" />
+    </label>
+  </div>
+
+  <label class="field">
+    <span class="field__label">Description</span>
+    <textarea class="input" name="description" rows="3"><%= task.description || '' %></textarea>
+  </label>
+
+  <div class="fieldrow">
+    <label class="field">
+      <span class="field__label">Category</span>
+      <select class="input" name="category">
+        <option value="">—</option>
+        <% categories.forEach((c)=>{ %><option value="<%= c.name %>" <%= task.category===c.name?'selected':'' %>><%= c.name %></option><% }) %>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field__label">Priority</span>
+      <select class="input" name="priority"><% priorities.forEach((p)=>{ %><option value="<%= p %>" <%= task.priority===p?'selected':'' %>><%= p.charAt(0).toUpperCase()+p.slice(1) %></option><% }) %></select>
+    </label>
+    <label class="field">
+      <span class="field__label">Status</span>
+      <select class="input" name="status"><% statuses.forEach((s)=>{ %><option value="<%= s %>" <%= task.status===s?'selected':'' %>><%= s.replace('_',' ') %></option><% }) %></select>
+    </label>
+    <label class="field">
+      <span class="field__label">Due date &amp; time</span>
+      <input class="input" type="datetime-local" name="due_at" value="<%= dueVal %>" />
+    </label>
+  </div>
+
+  <fieldset class="field">
+    <span class="field__label">Assign to</span>
+    <div class="assignees">
+      <% users.forEach((u)=>{ %>
+        <label class="chk"><input type="checkbox" name="assignees" value="<%= u.id %>" <%= assignedIds.includes(u.id)?'checked':'' %> /> <%= u.name || u.email %></label>
+      <% }) %>
+    </div>
+  </fieldset>
+
+  <fieldset class="field">
+    <span class="field__label">Link a record (Rent Manager)</span>
+    <div class="fieldrow">
+      <select class="input field--narrow" name="link_type" id="linkType">
+        <option value="">No link</option>
+        <% linkTypes.forEach((lt)=>{ %><option value="<%= lt %>" <%= task.link_type===lt?'selected':'' %>><%= lt.charAt(0).toUpperCase()+lt.slice(1) %></option><% }) %>
+      </select>
+      <div class="field" style="position:relative">
+        <input class="input" id="linkSearch" placeholder="Search by name…" autocomplete="off" />
+        <div class="linkresults" id="linkResults" hidden></div>
+      </div>
+      <input class="input" name="link_name" id="linkName" placeholder="Linked record" value="<%= task.link_name || '' %>" />
+      <input type="hidden" name="link_id" id="linkId" value="<%= task.link_id || '' %>" />
+    </div>
+    <span class="field__hint">Pick a tenant, owner, prospect or vendor — or just type a name.</span>
+  </fieldset>
+
+  <fieldset class="field">
+    <span class="field__label">Recurring</span>
+    <div class="fieldrow">
+      <select class="input field--narrow" name="rec_freq" id="recFreq">
+        <option value="">Does not repeat</option>
+        <% ['daily','weekly','monthly','yearly'].forEach((fq)=>{ %><option value="<%= fq %>" <%= rec&&rec.freq===fq?'selected':'' %>><%= fq.charAt(0).toUpperCase()+fq.slice(1) %></option><% }) %>
+      </select>
+      <label class="field field--narrow"><span class="field__label">Every</span><input class="input" type="number" name="rec_interval" min="1" value="<%= rec?rec.interval||1:1 %>" /></label>
+      <label class="field"><span class="field__label">Ends</span>
+        <select class="input" name="rec_end_type">
+          <option value="never" <%= !rec||rec.endType==='never'?'selected':'' %>>Never</option>
+          <option value="on" <%= rec&&rec.endType==='on'?'selected':'' %>>On date</option>
+          <option value="after" <%= rec&&rec.endType==='after'?'selected':'' %>>After N times</option>
+        </select>
+      </label>
+      <label class="field field--narrow"><span class="field__label">End date</span><input class="input" type="date" name="rec_end_on" value="<%= rec&&rec.endOn?String(rec.endOn).slice(0,10):'' %>" /></label>
+      <label class="field field--narrow"><span class="field__label">Times</span><input class="input" type="number" name="rec_count" min="1" value="<%= rec&&rec.count?rec.count:'' %>" /></label>
+    </div>
+  </fieldset>
+
+  <div class="settings__actions">
+    <button class="btn btn--primary" type="submit"><%= isNew ? 'Create task' : 'Save task' %></button>
+    <a class="btn btn--ghost" href="<%= isNew ? '/tasks' : '/tasks/' + task.id %>">Cancel</a>
+  </div>
+</form>

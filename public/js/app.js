@@ -258,4 +258,142 @@
       }
     });
   }
+
+  // ---- reminder banner: dismiss ----
+  const remClose = document.getElementById('remBannerClose');
+  if (remClose) {
+    remClose.addEventListener('click', () => {
+      const b = document.getElementById('remBanner');
+      if (b) b.remove();
+    });
+  }
+
+  // ---- tasks: bulk select ----
+  const bulkForm = document.getElementById('bulkForm');
+  if (bulkForm) {
+    const checkAll = document.getElementById('checkAll');
+    const bar = document.getElementById('bulkbar');
+    const count = document.getElementById('bulkCount');
+    const rows = () => Array.from(bulkForm.querySelectorAll('.rowchk'));
+    const refresh = () => {
+      const sel = rows().filter((r) => r.checked).length;
+      if (count) count.textContent = sel;
+      if (bar) bar.hidden = sel === 0;
+    };
+    if (checkAll)
+      checkAll.addEventListener('change', () => {
+        rows().forEach((r) => (r.checked = checkAll.checked));
+        refresh();
+      });
+    bulkForm.addEventListener('change', (e) => {
+      if (e.target.classList.contains('rowchk')) refresh();
+    });
+  }
+
+  // ---- tasks: column visibility ----
+  document.querySelectorAll('input[data-col]').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const col = cb.getAttribute('data-col');
+      document.querySelectorAll('[data-col="' + col + '"]').forEach((cell) => {
+        if (cell.tagName === 'INPUT') return;
+        cell.style.display = cb.checked ? '' : 'none';
+      });
+    });
+  });
+
+  // ---- tasks: kanban drag ----
+  const board = document.querySelector('.board');
+  if (board) {
+    let dragged = null;
+    board.querySelectorAll('.card-task').forEach((card) => {
+      card.addEventListener('dragstart', (e) => {
+        dragged = card;
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', card.dataset.taskId);
+      });
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        dragged = null;
+        board.querySelectorAll('.drop-hover').forEach((d) => d.classList.remove('drop-hover'));
+      });
+    });
+    board.querySelectorAll('[data-droplist]').forEach((list) => {
+      list.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        list.classList.add('drop-hover');
+      });
+      list.addEventListener('dragleave', () => list.classList.remove('drop-hover'));
+      list.addEventListener('drop', (e) => {
+        e.preventDefault();
+        list.classList.remove('drop-hover');
+        if (!dragged) return;
+        const status = list.closest('.board__col').dataset.status;
+        const id = dragged.dataset.taskId;
+        list.appendChild(dragged);
+        fetch('/tasks/' + id + '/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+          body: 'status=' + encodeURIComponent(status),
+        }).catch(() => {});
+        board.querySelectorAll('.board__col').forEach((c) => {
+          const el = c.querySelector('.board__count');
+          if (el) el.textContent = c.querySelectorAll('.card-task').length;
+        });
+      });
+    });
+  }
+
+  // ---- tasks: link a Rent Manager record ----
+  const linkType = document.getElementById('linkType');
+  const linkSearch = document.getElementById('linkSearch');
+  const linkResults = document.getElementById('linkResults');
+  if (linkType && linkSearch && linkResults) {
+    const linkName = document.getElementById('linkName');
+    const linkId = document.getElementById('linkId');
+    let timer;
+    const doSearch = () => {
+      const type = linkType.value;
+      const q = linkSearch.value.trim();
+      if (!type || q.length < 2) {
+        linkResults.hidden = true;
+        return;
+      }
+      fetch('/tasks/link-search?type=' + encodeURIComponent(type) + '&q=' + encodeURIComponent(q))
+        .then((r) => r.json())
+        .then((d) => {
+          const items = d.results || [];
+          linkResults.innerHTML = items.length
+            ? items
+                .map(
+                  (x) =>
+                    '<button type="button" data-id="' +
+                    x.id +
+                    '" data-name="' +
+                    String(x.name).replace(/"/g, '&quot;') +
+                    '">' +
+                    String(x.name).replace(/</g, '&lt;') +
+                    '</button>'
+                )
+                .join('')
+            : '<button type="button" disabled>No matches</button>';
+          linkResults.hidden = false;
+        })
+        .catch(() => (linkResults.hidden = true));
+    };
+    linkSearch.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(doSearch, 300);
+    });
+    linkResults.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-id]');
+      if (!b) return;
+      if (linkName) linkName.value = b.getAttribute('data-name');
+      if (linkId) linkId.value = b.getAttribute('data-id');
+      linkResults.hidden = true;
+    });
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#linkResults') && e.target !== linkSearch) linkResults.hidden = true;
+    });
+  }
 })();

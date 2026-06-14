@@ -161,6 +161,117 @@ const STATEMENTS = [
      WHERE role_id IS NULL AND role = 'admin'`,
   `UPDATE users SET role_id = (SELECT id FROM roles WHERE key = 'employee')
      WHERE role_id IS NULL`,
+
+  // Grant the Tasks module to the seeded roles by default (idempotent).
+  // Manager sees all tasks (tasks_all); Employee/Staff sees only their own.
+  `UPDATE roles SET permissions = permissions || '["tasks","tasks_all"]'::jsonb
+     WHERE key = 'manager' AND NOT (permissions ? 'tasks')`,
+  `UPDATE roles SET permissions = permissions || '["tasks"]'::jsonb
+     WHERE key = 'employee' AND NOT (permissions ? 'tasks')`,
+
+  // --- Tasks module --------------------------------------------------------
+  `CREATE TABLE IF NOT EXISTS task_categories (
+     id serial PRIMARY KEY,
+     name text UNIQUE NOT NULL,
+     color text,
+     sort int DEFAULT 0,
+     is_active boolean DEFAULT true,
+     created_at timestamptz DEFAULT now()
+   )`,
+  `INSERT INTO task_categories (name, sort) VALUES
+     ('Lease Management',1),('Move-In / Move-Out',2),('Lease Renewal',3),
+     ('Tenant Communication',4),('Rent Collection',5),('Delinquency Follow-Up',6),
+     ('Owner Relations',7),('Vendor Coordination',8),('Property Inspection',9),
+     ('Compliance / Legal',10),('Administrative',11),('Marketing / Vacancy',12),
+     ('HOA / Association',13),('Other',99)
+   ON CONFLICT (name) DO NOTHING`,
+
+  `CREATE TABLE IF NOT EXISTS tasks (
+     id            serial PRIMARY KEY,
+     title         text NOT NULL,
+     description   text,
+     category      text,
+     priority      text NOT NULL DEFAULT 'normal',
+     status        text NOT NULL DEFAULT 'open',
+     color         text,
+     due_at        timestamptz,
+     recurrence    jsonb,
+     link_type     text,
+     link_id       text,
+     link_name     text,
+     snoozed_until timestamptz,
+     deleted_at    timestamptz,
+     created_by    int REFERENCES users(id),
+     created_at    timestamptz DEFAULT now(),
+     updated_at    timestamptz DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks (status)`,
+  `CREATE INDEX IF NOT EXISTS tasks_due_idx ON tasks (due_at)`,
+  `CREATE INDEX IF NOT EXISTS tasks_snoozed_idx ON tasks (snoozed_until)`,
+
+  `CREATE TABLE IF NOT EXISTS task_assignees (
+     task_id int REFERENCES tasks(id) ON DELETE CASCADE,
+     user_id int REFERENCES users(id) ON DELETE CASCADE,
+     PRIMARY KEY (task_id, user_id)
+   )`,
+  `CREATE TABLE IF NOT EXISTS task_comments (
+     id serial PRIMARY KEY,
+     task_id int REFERENCES tasks(id) ON DELETE CASCADE,
+     user_id int,
+     body text NOT NULL,
+     created_at timestamptz DEFAULT now()
+   )`,
+  `CREATE TABLE IF NOT EXISTS task_history (
+     id serial PRIMARY KEY,
+     task_id int REFERENCES tasks(id) ON DELETE CASCADE,
+     user_id int,
+     action text NOT NULL,
+     detail text,
+     created_at timestamptz DEFAULT now()
+   )`,
+  `CREATE TABLE IF NOT EXISTS task_attachments (
+     id serial PRIMARY KEY,
+     task_id int REFERENCES tasks(id) ON DELETE CASCADE,
+     filename text NOT NULL,
+     mime_type text,
+     file_data bytea,
+     uploaded_by int,
+     created_at timestamptz DEFAULT now()
+   )`,
+  `CREATE TABLE IF NOT EXISTS reminders (
+     id serial PRIMARY KEY,
+     user_id int REFERENCES users(id) ON DELETE CASCADE,
+     task_id int REFERENCES tasks(id) ON DELETE CASCADE,
+     title text,
+     note text,
+     remind_at timestamptz NOT NULL,
+     via_email boolean DEFAULT false,
+     via_daily_email boolean DEFAULT false,
+     via_screen boolean DEFAULT false,
+     recurrence text,
+     status text NOT NULL DEFAULT 'open',
+     last_emailed_at timestamptz,
+     last_shown_on date,
+     created_at timestamptz DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS reminders_user_idx ON reminders (user_id, status)`,
+  `CREATE TABLE IF NOT EXISTS task_saved_filters (
+     id serial PRIMARY KEY,
+     user_id int REFERENCES users(id) ON DELETE CASCADE,
+     name text NOT NULL,
+     query jsonb NOT NULL,
+     created_at timestamptz DEFAULT now()
+   )`,
+  `CREATE TABLE IF NOT EXISTS notifications (
+     id serial PRIMARY KEY,
+     user_id int REFERENCES users(id) ON DELETE CASCADE,
+     task_id int,
+     type text,
+     message text,
+     is_read boolean NOT NULL DEFAULT false,
+     created_at timestamptz DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id, is_read)`,
 ];
 
 export async function runMigrations() {

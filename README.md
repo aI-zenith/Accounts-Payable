@@ -36,6 +36,29 @@ provider:
 
 No new secrets are required for auth.
 
+## Tasks module
+
+Internal task management (under **Tasks** in the sidebar, gated by the `tasks`
+permission). Not work orders — pure team task tracking.
+
+- **Tasks** have title, description, category (configurable in **Settings →
+  Tasks**), priority, status, color, multiple assignees, due date/time,
+  recurrence, an optional linked Rent Manager record (tenant/owner/prospect/
+  vendor, searched live), file attachments, a comments thread, and a full change
+  history.
+- **Views:** table list (filter/search/sort, column toggle, CSV, bulk actions,
+  saved filters), a drag-and-drop **Kanban board**, a task detail page, plus
+  dashboard widgets (my tasks, overdue, due in 7 days).
+- **Snooze:** snooze any task 7 days — hidden from every list/view, with a
+  dedicated **Snoozed** page and **Wake up now**.
+- **Reminders:** personal, per-task reminders (**My Reminders** page, filter
+  Open/Done/All). Delivery: on-screen banner once a day at sign-in, email once,
+  or email daily until done; recurring (daily) supported; overdue highlighted.
+  Email needs SMTP (`SMTP_HOST`, …) — on-screen works without it.
+- **Visibility by role:** Admin/Manager (the `tasks_all` permission) see and
+  assign across the team; Staff (the `tasks` permission) see only tasks they're
+  assigned to or created. Manager and Employee roles get Tasks by default.
+
 ## How it works
 
 There are two entry points that converge on the same extract → match → push

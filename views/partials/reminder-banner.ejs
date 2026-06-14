@@ -1,0 +1,19 @@
+<% if (typeof screenReminders !== 'undefined' && screenReminders.length) { %>
+  <div class="rembanner" id="remBanner" data-ids="<%= screenReminders.map((r)=>r.id).join(',') %>">
+    <div class="rembanner__icon">🔔</div>
+    <div class="rembanner__body">
+      <strong><%= screenReminders.length %> reminder<%= screenReminders.length === 1 ? '' : 's' %> for you</strong>
+      <ul>
+        <% screenReminders.slice(0, 4).forEach((r)=>{ %>
+          <li>
+            <%= r.title %>
+            <% if (r.task_title) { %>— <a href="/tasks/<%= r.task_id %>"><%= r.task_title %></a><% } %>
+            <span class="rembanner__when"><%= new Date(r.remind_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) %></span>
+          </li>
+        <% }) %>
+      </ul>
+    </div>
+    <a class="rembanner__link" href="/reminders">View all</a>
+    <button class="rembanner__close" id="remBannerClose" aria-label="Dismiss">×</button>
+  </div>
+<% } %>

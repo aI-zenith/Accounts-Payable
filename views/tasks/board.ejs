@@ -1,0 +1,37 @@
+<%
+  const STAT = { open: 'Open', in_progress: 'In Progress', completed: 'Completed', cancelled: 'Cancelled' };
+  const PRIO = { low: 'Low', normal: 'Normal', high: 'High', urgent: 'Urgent' };
+  const fmtDue = (d) => { if (!d) return ''; const dt = new Date(d); return dt.toLocaleString('en-US', { month: 'short', day: 'numeric' }); };
+  const isOverdue = (t) => t.due_at && new Date(t.due_at) < new Date() && (t.status === 'open' || t.status === 'in_progress');
+%>
+
+<section class="page-head page-head--row">
+  <div>
+    <h1 class="page-title">Task board</h1>
+    <p class="page-sub">Drag a card to change its status.</p>
+  </div>
+  <a class="btn btn--primary" href="/tasks/new">New task</a>
+</section>
+
+<%- include('../partials/task-nav') %>
+
+<div class="board">
+  <% columns.forEach((col)=>{ %>
+    <div class="board__col" data-status="<%= col.key %>">
+      <div class="board__head"><span class="dot stat-dot-<%= col.key %>"></span><%= STAT[col.key] %> <span class="board__count"><%= col.tasks.length %></span></div>
+      <div class="board__list" data-droplist>
+        <% col.tasks.forEach((t)=>{ %>
+          <a class="card-task <%= isOverdue(t) ? 'is-overdue' : '' %>" href="/tasks/<%= t.id %>" draggable="true" data-task-id="<%= t.id %>">
+            <div class="card-task__top">
+              <span class="pill prio-<%= t.priority %>"><%= PRIO[t.priority] %></span>
+              <% if (t.due_at) { %><span class="card-task__due <%= isOverdue(t) ? 'overdue-text' : '' %>"><%= fmtDue(t.due_at) %></span><% } %>
+            </div>
+            <div class="card-task__title"><%= t.title %></div>
+            <% if (t.category) { %><div class="card-task__cat"><%= t.category %></div><% } %>
+            <% if (t.assignees.length) { %><div class="card-task__people"><%= t.assignees.map((a)=>a.name).join(', ') %></div><% } %>
+          </a>
+        <% }) %>
+      </div>
+    </div>
+  <% }) %>
+</div>

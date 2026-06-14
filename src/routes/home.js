@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { query } from '../db/pool.js';
+import { userCan } from '../middleware/auth.js';
+import { myTasks, dueWithin, statusCounts } from '../services/tasks.js';
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -47,6 +49,21 @@ router.get(
 
     const quote = QUOTES[Math.floor(now.getTime() / 86400000) % QUOTES.length];
 
+    // Task widgets (only for users who can see Tasks).
+    let tasks = null;
+    if (userCan(req.user, 'tasks')) {
+      try {
+        const [mine, due, counts] = await Promise.all([
+          myTasks(req.user),
+          dueWithin(req.user, 7),
+          statusCounts(req.user),
+        ]);
+        tasks = { mine: mine.slice(0, 6), due: due.slice(0, 6), counts };
+      } catch {
+        tasks = null;
+      }
+    }
+
     res.render('home', {
       title: 'Dashboard',
       active: 'home',
@@ -55,6 +72,7 @@ router.get(
       dateLong,
       quote,
       ap,
+      tasks,
       notice: req.query.notice || null,
     });
   })

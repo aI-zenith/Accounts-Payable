@@ -26,6 +26,7 @@
           <span class="appbar__crumb"><%= brand.company %> · <%= brand.product %></span>
         </header>
         <main class="content">
+          <%- include('partials/reminder-banner') %>
           <% if (typeof notice !== 'undefined' && notice) { %>
             <div class="notice" role="status"><%= notice %></div>
           <% } %>

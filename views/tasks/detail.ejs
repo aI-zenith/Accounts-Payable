@@ -1,0 +1,121 @@
+<%
+  const PRIO = { low: 'Low', normal: 'Normal', high: 'High', urgent: 'Urgent' };
+  const STAT = { open: 'Open', in_progress: 'In Progress', completed: 'Completed', cancelled: 'Cancelled' };
+  const fmt = (d) => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+  const isOverdue = task.due_at && new Date(task.due_at) < new Date() && (task.status === 'open' || task.status === 'in_progress');
+  const who = (r) => r.name || r.email || 'Someone';
+%>
+
+<section class="page-head page-head--row">
+  <div>
+    <a class="backlink" href="/tasks">← All tasks</a>
+    <h1 class="page-title" style="<%= task.color ? 'border-left:5px solid ' + task.color + ';padding-left:12px' : '' %>"><%= task.title %></h1>
+  </div>
+  <div class="rowactions">
+    <a class="btn btn--ghost btn--sm" href="/tasks/<%= task.id %>/edit">Edit</a>
+    <form method="post" action="/tasks/<%= task.id %>/snooze" class="inline"><input type="hidden" name="back" value="/tasks/<%= task.id %>" /><button class="btn btn--ghost btn--sm">Snooze 7d</button></form>
+    <form method="post" action="/tasks/<%= task.id %>/delete" class="inline" onsubmit="return confirm('Delete this task?');"><button class="btn btn--ghost btn--sm">Delete</button></form>
+  </div>
+</section>
+
+<div class="grid-2">
+  <div>
+    <!-- status switcher -->
+    <section class="card">
+      <div class="statusrow">
+        <% statuses.forEach((s)=>{ %>
+          <form method="post" action="/tasks/<%= task.id %>/status" class="inline">
+            <input type="hidden" name="status" value="<%= s %>" />
+            <button class="statusbtn <%= task.status===s?'is-active':'' %> stat-<%= s %>" type="submit"><%= STAT[s] %></button>
+          </form>
+        <% }) %>
+      </div>
+      <% if (task.description) { %><p class="taskdesc"><%= task.description %></p><% } %>
+    </section>
+
+    <!-- attachments -->
+    <section class="card">
+      <h2 class="card__h">Attachments</h2>
+      <% if (task.attachments.length) { %>
+        <ul class="filelist">
+          <% task.attachments.forEach((a)=>{ %>
+            <li><a href="/tasks/<%= task.id %>/attachment/<%= a.id %>" target="_blank"><%= a.filename %></a> <span class="hint"><%= fmt(a.created_at) %></span></li>
+          <% }) %>
+        </ul>
+      <% } else { %><p class="hint">No attachments yet.</p><% } %>
+      <form method="post" action="/tasks/<%= task.id %>/attach" enctype="multipart/form-data" class="uploadrow">
+        <input type="file" name="file" required />
+        <button class="btn btn--ghost btn--sm" type="submit">Upload</button>
+      </form>
+    </section>
+
+    <!-- activity: comments + history -->
+    <section class="card" id="activity">
+      <h2 class="card__h">Activity</h2>
+      <form method="post" action="/tasks/<%= task.id %>/comment" class="commentform">
+        <textarea class="input" name="body" rows="2" placeholder="Add a comment…" required></textarea>
+        <button class="btn btn--primary btn--sm" type="submit">Comment</button>
+      </form>
+      <ul class="thread">
+        <% task.comments.slice().reverse().forEach((c)=>{ %>
+          <li class="thread__item">
+            <div class="avatar avatar--sm"><%= who(c).slice(0,1).toUpperCase() %></div>
+            <div><div class="thread__meta"><strong><%= who(c) %></strong> · <%= fmt(c.created_at) %></div><div class="thread__body"><%= c.body %></div></div>
+          </li>
+        <% }) %>
+      </ul>
+      <h3 class="card__subh">History</h3>
+      <ul class="historylog">
+        <% task.history.forEach((h)=>{ %>
+          <li><span class="hist__action"><%= h.action %></span> <%= h.detail || '' %> <span class="hint">· <%= who(h) %> · <%= fmt(h.created_at) %></span></li>
+        <% }) %>
+      </ul>
+    </section>
+  </div>
+
+  <aside>
+    <!-- details -->
+    <section class="card">
+      <h2 class="card__h">Details</h2>
+      <dl class="meta">
+        <dt>Status</dt><dd><span class="pill stat-<%= task.status %>"><%= STAT[task.status] %></span></dd>
+        <dt>Priority</dt><dd><span class="pill prio-<%= task.priority %>"><%= PRIO[task.priority] %></span></dd>
+        <dt>Category</dt><dd><%= task.category || '—' %></dd>
+        <dt>Due</dt><dd class="<%= isOverdue ? 'overdue-text' : '' %>"><%= fmt(task.due_at) %><% if (isOverdue) { %> <span class="tag tag--over">overdue</span><% } %></dd>
+        <dt>Assignees</dt><dd><%= task.assignees.map((a)=>a.name).join(', ') || '—' %></dd>
+        <dt>Linked</dt><dd><% if (task.link_name) { %><span class="tag"><%= task.link_type %></span> <%= task.link_name %><% } else { %>—<% } %></dd>
+        <% if (task.recurrence) { const r = typeof task.recurrence==='object'?task.recurrence:JSON.parse(task.recurrence); %>
+          <dt>Repeats</dt><dd><%= r.freq %><%= r.interval>1?(' ×'+r.interval):'' %></dd>
+        <% } %>
+      </dl>
+    </section>
+
+    <!-- reminders (personal) -->
+    <section class="card">
+      <h2 class="card__h">My reminders</h2>
+      <% if (task.reminders.length) { %>
+        <ul class="minireminders">
+          <% task.reminders.forEach((r)=>{ const over = r.status==='open' && new Date(r.remind_at) < new Date(); %>
+            <li>
+              <div><strong><%= r.title %></strong> <% if (r.recurrence==='daily') { %><span class="tag">daily</span><% } %><% if (over) { %><span class="tag tag--over">overdue</span><% } %></div>
+              <div class="hint"><%= fmt(r.remind_at) %> · <%= r.status %></div>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+      <details class="addrem">
+        <summary class="linkbtn">Add a reminder</summary>
+        <form method="post" action="/tasks/<%= task.id %>/reminder" class="stack">
+          <input class="input" name="title" placeholder="Reminder title" required />
+          <input class="input" type="datetime-local" name="remind_at" required />
+          <input class="input" name="note" placeholder="Optional note" />
+          <label class="chk"><input type="checkbox" name="via_screen" checked /> Show on screen at sign-in</label>
+          <label class="chk"><input type="checkbox" name="via_email" /> Email me once</label>
+          <label class="chk"><input type="checkbox" name="via_daily_email" /> Email daily until done</label>
+          <label class="chk"><input type="checkbox" name="recurrence" value="daily" /> Repeat daily</label>
+          <button class="btn btn--primary btn--sm" type="submit">Set reminder</button>
+        </form>
+      </details>
+    </section>
+  </aside>
+</div>
