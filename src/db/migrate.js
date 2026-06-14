@@ -43,6 +43,10 @@ const STATEMENTS = [
   // Default expense (GL) account for the credit card transaction allocation.
   `ALTER TABLE settings ADD COLUMN IF NOT EXISTS default_gl_account_id text`,
   `ALTER TABLE settings ADD COLUMN IF NOT EXISTS default_gl_account_name text`,
+  // Seed "Maintenance Material" (GLAccountID 345) as the default if unset.
+  // Only fills a blank value, so a user's later choice is never overwritten.
+  `UPDATE settings SET default_gl_account_id = '345', default_gl_account_name = 'Maintenance Material'
+     WHERE id = 1 AND (default_gl_account_id IS NULL OR default_gl_account_id = '')`,
 
   // Map a credit card's last-4 digits to a Rent Manager credit card id, so the
   // push posts to the right card (e.g. 6760 -> "Chase ...7202").
