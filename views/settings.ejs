@@ -1,6 +1,13 @@
 <section class="page-head">
   <h1 class="page-title">Settings</h1>
-  <p class="page-sub">Credentials are encrypted at rest. Leave a field blank to keep the stored value.</p>
+  <p class="page-sub">Configuration is grouped by module. Secrets are encrypted at rest — leave a field blank to keep the stored value.</p>
+</section>
+
+<%- include('partials/settings-nav') %>
+
+<section class="settings-section">
+  <h2 class="settings-section__title">Accounts Payable</h2>
+  <p class="settings-section__sub">Rent Manager, Claude extraction, the email inbox, card mappings and the default expense account that power the AP module.</p>
 </section>
 
 <form class="settings" action="/settings" method="post">

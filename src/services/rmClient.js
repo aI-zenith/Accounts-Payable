@@ -522,6 +522,22 @@ export async function attachReceipt(transactionId, fileBuffer, filename) {
   return (rec && (rec.FileAttachmentID ?? rec.FileID ?? rec.ID)) ?? null;
 }
 
+/**
+ * Read the attachments already on a credit card transaction (via the WAPI host,
+ * where our token is valid). Used to keep receipt attachment idempotent — never
+ * upload a second copy if RM already has one. Returns [] on any error.
+ */
+export async function getTransactionAttachments(transactionId) {
+  if (transactionId == null) return [];
+  try {
+    const { body } = await request(`/CreditCardTransactions/${transactionId}?embeds=Attachments`);
+    const rec = Array.isArray(body) ? body[0] : body;
+    return Array.isArray(rec?.Attachments) ? rec.Attachments : [];
+  } catch {
+    return [];
+  }
+}
+
 // Test-only helper used by the Settings connection test.
 export async function testAuthentication() {
   const token = await authenticate();

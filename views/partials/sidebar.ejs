@@ -55,6 +55,11 @@
         <svg class="navlink__icon" viewBox="0 0 24 24"><%- ic.cog %></svg>
         Settings
       </a>
+      <% if (active === 'settings') { %>
+        <div class="navsub">
+          <a class="navsub__link is-active" href="/settings/accounts-payable">Accounts Payable</a>
+        </div>
+      <% } %>
     </div>
   </nav>
 

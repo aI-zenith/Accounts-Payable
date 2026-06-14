@@ -20,6 +20,7 @@ import {
   jobMatchesPropertyOrUnit,
   createCreditCardTransaction,
   attachReceipt,
+  getTransactionAttachments,
 } from './rmClient.js';
 
 function normalizeDate(v) {
@@ -70,9 +71,20 @@ async function resolveCard(d) {
 }
 
 // Attach the stored receipt PDF to a transaction. Returns a short status note.
+// Idempotent: if RM already has a receipt on the transaction, record it and skip
+// — so a re-push or a double-click never creates a duplicate attachment.
 async function doAttach(inv, txnId) {
   if (txnId == null) return ' (could not read the transaction id, so the receipt was not attached)';
   try {
+    const existing = await getTransactionAttachments(txnId);
+    if (existing.length) {
+      const existingId = existing[0].FileAttachmentID ?? existing[0].FileID ?? null;
+      await query('UPDATE invoices SET rm_attachment_id = $2 WHERE id = $1', [
+        inv.id,
+        existingId != null ? String(existingId) : inv.rm_attachment_id || null,
+      ]);
+      return ' Receipt already attached.';
+    }
     const { rows: fr } = await query('SELECT file_data FROM invoices WHERE id = $1', [inv.id]);
     const fileData = fr[0] && fr[0].file_data;
     if (!fileData) return '';
