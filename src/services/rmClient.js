@@ -560,13 +560,8 @@ export async function searchTenants(q) {
   const hit = tenantCache.get(key);
   if (hit && hit.expires > Date.now()) return hit.value;
 
-  let value = [];
-  try {
-    const fields = 'TenantID,Name,Email,Phone,UnitID,PropertyID';
-    let path = `/Tenants?fields=${fields}&pageSize=50`;
-    if (term) path += `&filters=Name,contains,${encodeURIComponent(term)}`;
-    const items = await listAll(path);
-    value = items
+  const map = (items) =>
+    items
       .map((t) => ({
         id: String(t.TenantID ?? t.ID ?? ''),
         name: t.Name || '',
@@ -575,11 +570,31 @@ export async function searchTenants(q) {
         unit: t.UnitID != null ? String(t.UnitID) : '',
         property: t.PropertyID != null ? String(t.PropertyID) : '',
       }))
-      .filter((t) => t.name)
-      .slice(0, 50);
-  } catch (err) {
-    console.error('[rmClient] tenant search failed:', err.message);
-    value = [];
+      .filter((t) => t.name);
+
+  // Try the richest query first, then degrade: drop the (maybe-invalid) Email/
+  // Phone fields, then drop the server-side filter and match client-side. Any
+  // attempt that succeeds wins; if all fail, return [] (never throws).
+  const filter = term ? `&filters=Name,contains,${encodeURIComponent(term)}` : '';
+  const attempts = [
+    `/Tenants?fields=TenantID,Name,Email,Phone,UnitID,PropertyID&pageSize=50${filter}`,
+    `/Tenants?fields=TenantID,Name&pageSize=50${filter}`,
+    `/Tenants?fields=TenantID,Name&pageSize=200`,
+  ];
+
+  let value = [];
+  for (let i = 0; i < attempts.length; i++) {
+    try {
+      let items = await listAll(attempts[i]);
+      if (i === attempts.length - 1 && term) {
+        const n = term.toLowerCase();
+        items = items.filter((t) => String(t.Name || '').toLowerCase().includes(n));
+      }
+      value = map(items).slice(0, 50);
+      break;
+    } catch (err) {
+      console.error(`[rmClient] tenant search attempt ${i + 1} failed:`, err.message);
+    }
   }
   tenantCache.set(key, { value, expires: Date.now() + TENANT_TTL_MS });
   return value;
