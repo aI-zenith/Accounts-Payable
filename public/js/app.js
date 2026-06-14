@@ -363,18 +363,21 @@
         .then((r) => r.json())
         .then((d) => {
           const items = d.results || [];
+          const escAttr = (s) => String(s == null ? '' : s).replace(/"/g, '&quot;');
+          const escHtml = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
           linkResults.innerHTML = items.length
             ? items
-                .map(
-                  (x) =>
-                    '<button type="button" data-id="' +
-                    x.id +
-                    '" data-name="' +
-                    String(x.name).replace(/"/g, '&quot;') +
-                    '">' +
-                    String(x.name).replace(/</g, '&lt;') +
+                .map((x) => {
+                  const meta = [x.email, x.phone, x.unit && 'Unit ' + x.unit, x.property && 'Property ' + x.property]
+                    .filter(Boolean)
+                    .join(' · ');
+                  return (
+                    '<button type="button" data-id="' + escAttr(x.id) + '" data-name="' + escAttr(x.name) + '">' +
+                    escHtml(x.name) +
+                    (meta ? '<span class="linkmeta">' + escHtml(meta) + '</span>' : '') +
                     '</button>'
-                )
+                  );
+                })
                 .join('')
             : '<button type="button" disabled>No matches</button>';
           linkResults.hidden = false;

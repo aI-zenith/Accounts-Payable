@@ -76,7 +76,10 @@ export async function getCredentials() {
   // or a full URL ("https://bluegm.api.rentmanager.com"). Falls back to the
   // RENTMANAGER_BASE_URL env var, then a bare RM_SUBDOMAIN.
   const subdomain = row.rm_subdomain || process.env.RM_SUBDOMAIN || null;
-  const baseUrl = resolveBaseUrl(subdomain, process.env.RENTMANAGER_BASE_URL);
+  const baseUrl = resolveBaseUrl(
+    subdomain,
+    process.env.RENTMANAGER_BASE_URL || process.env.RM_API_BASE_URL
+  );
 
   return {
     rm: {
