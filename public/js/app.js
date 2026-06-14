@@ -149,4 +149,47 @@
       }
     });
   });
+
+  // ---- copy invite link to clipboard ----
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-copy-btn]');
+    if (!btn) return;
+    const bar = btn.closest('.invitebar') || btn.parentElement;
+    const input = bar && bar.querySelector('[data-copy]');
+    if (!input) return;
+    const flash = () => {
+      const t = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(() => (btn.textContent = t), 1400);
+    };
+    input.focus();
+    input.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(input.value).then(flash).catch(() => {
+        document.execCommand('copy');
+        flash();
+      });
+    } else {
+      document.execCommand('copy');
+      flash();
+    }
+  });
+
+  // ---- mobile sidebar toggle ----
+  const navToggle = document.getElementById('navToggle');
+  if (navToggle) {
+    navToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.body.classList.toggle('nav-open');
+    });
+    document.addEventListener('click', (e) => {
+      if (
+        document.body.classList.contains('nav-open') &&
+        !e.target.closest('.sidebar') &&
+        !e.target.closest('#navToggle')
+      ) {
+        document.body.classList.remove('nav-open');
+      }
+    });
+  }
 })();

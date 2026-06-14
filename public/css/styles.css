@@ -3,16 +3,23 @@
    the signature ledger rule; everything else quiet and disciplined. */
 
 :root {
-  --ink: #13203a;          /* deep ink navy — anchor */
-  --ink-soft: #3a4763;
-  --ink-muted: #6b7488;
-  --paper: #faf8f3;        /* warm paper off-white */
+  --ink: #1b212e;          /* primary text — charcoal (Zenith) */
+  --ink-soft: #3b4252;
+  --ink-muted: #6b7385;
+  --paper: #f4f5f7;        /* app background — cool light gray */
   --paper-raised: #ffffff;
-  --line: #e4dfd4;         /* hairline border */
-  --line-strong: #d6cfbf;
-  --accent: #c8872e;       /* the one deciding accent — muted amber/ochre */
-  --accent-deep: #a96f1f;
-  --accent-wash: #f6ecd9;
+  --line: #e7e9ee;         /* hairline border */
+  --line-strong: #d6dae1;
+  --accent: #2f6df0;       /* modern blue accent */
+  --accent-deep: #1f55cc;
+  --accent-wash: #eaf1fe;
+
+  /* sidebar — charcoal, echoes the Zenith mark */
+  --side: #1a1f29;
+  --side-soft: #232a36;
+  --side-line: rgba(255, 255, 255, 0.09);
+  --side-ink: #e7eaf1;
+  --side-muted: #98a1b2;
 
   /* semantic status */
   --slate: #6b7488;
@@ -21,12 +28,12 @@
   --blue-wash: #e6eef7;
   --green: #2f7d52;
   --green-wash: #e4f0e8;
-  --red: #b23b32;
-  --red-wash: #f6e6e3;
+  --red: #c0392b;
+  --red-wash: #fbeae8;
 
-  --radius: 8px;
-  --radius-sm: 5px;
-  --shadow: 0 1px 2px rgba(19, 32, 58, 0.04), 0 6px 20px rgba(19, 32, 58, 0.05);
+  --radius: 10px;
+  --radius-sm: 7px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.06);
 
   --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
   --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
