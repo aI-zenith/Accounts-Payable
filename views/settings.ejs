@@ -62,3 +62,63 @@
     <button type="submit" class="btn btn--primary">Save settings</button>
   </div>
 </form>
+
+<!-- Credit card mappings (last-4 -> Rent Manager card) -->
+<section class="card ledger-rule" style="margin-top: 22px;">
+  <header class="card__head">
+    <div class="card__title">
+      <h2>Credit card mappings</h2>
+    </div>
+  </header>
+  <p class="field__hint" style="margin-bottom: 14px;">
+    Map a card's last 4 digits (from the receipt) to the matching Rent Manager card,
+    e.g. <code>6760 → Chase …7202</code>.
+  </p>
+
+  <% if (rmCardsError) { %>
+    <p class="card__status is-fail" style="display:block;">Couldn't load Rent Manager cards: <%= rmCardsError %></p>
+  <% } %>
+
+  <% if (cardMappings && cardMappings.length) { %>
+    <table class="mini" style="margin-bottom: 16px;">
+      <thead>
+        <tr><th>Last 4</th><th>Rent Manager card</th><th aria-label="Remove"></th></tr>
+      </thead>
+      <tbody>
+        <% cardMappings.forEach((m) => { %>
+          <tr>
+            <td><code>•••• <%= m.last4 %></code></td>
+            <td><%= m.rm_card_name || m.rm_card_id %></td>
+            <td class="num">
+              <form action="/settings/card-mappings/<%= m.id %>/delete" method="post" onsubmit="return confirm('Remove this mapping?');">
+                <button type="submit" class="iconbtn" aria-label="Remove">×</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } else { %>
+    <p class="field__hint" style="margin-bottom: 14px;">No mappings yet.</p>
+  <% } %>
+
+  <form action="/settings/card-mappings" method="post" class="fieldrow" id="cardMapForm">
+    <label class="field field--narrow">
+      <span class="field__label">Last 4</span>
+      <input class="input num" type="text" name="last4" maxlength="4" placeholder="6760" required />
+    </label>
+    <label class="field">
+      <span class="field__label">Rent Manager card</span>
+      <select class="input" name="rm_card_id" id="rmCardSelect" required <%= rmCards.length ? '' : 'disabled' %>>
+        <option value="" disabled selected>Choose a card…</option>
+        <% rmCards.forEach((c) => { %>
+          <option value="<%= c.id %>" data-name="<%= c.name %>"><%= c.name %> (ID <%= c.id %>)</option>
+        <% }) %>
+      </select>
+      <input type="hidden" name="rm_card_name" id="rmCardName" />
+    </label>
+    <div class="field field--narrow" style="justify-content: flex-end;">
+      <button type="submit" class="btn btn--ghost">Add mapping</button>
+    </div>
+  </form>
+</section>

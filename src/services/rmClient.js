@@ -203,8 +203,12 @@ async function listAll(path) {
   return Array.isArray(body) ? body : body ? [body] : [];
 }
 
+export async function listCreditCards() {
+  return listAll('/CreditCards?pageSize=500');
+}
+
 export async function findCreditCardByName(name) {
-  const cards = await listAll('/CreditCards?pageSize=500');
+  const cards = await listCreditCards();
   return bestMatch(name, cards, [(c) => c.Name]);
 }
 

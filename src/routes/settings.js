@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { query } from '../db/pool.js';
 import { encrypt, decrypt, mask } from '../services/crypto.js';
 import { getCredentials } from '../services/credentials.js';
-import { authenticate, _resetTokenCache, request } from '../services/rmClient.js';
+import { authenticate, _resetTokenCache, request, listCreditCards } from '../services/rmClient.js';
 
 const router = Router();
 
@@ -46,12 +46,60 @@ router.get(
   '/settings',
   wrap(async (req, res) => {
     const settings = await loadSettingsView();
+
+    // Saved last-4 -> RM card mappings.
+    const { rows: cardMappings } = await query(
+      'SELECT id, last4, rm_card_id, rm_card_name FROM card_mappings ORDER BY last4'
+    );
+
+    // Live list of RM credit cards for the picker (best-effort).
+    let rmCards = [];
+    let rmCardsError = null;
+    try {
+      const cards = await listCreditCards();
+      rmCards = cards.map((c) => ({ id: String(c.CreditCardID ?? c.ID), name: c.Name }));
+    } catch (err) {
+      rmCardsError = err.message;
+    }
+
     res.render('settings', {
       title: 'Settings',
       active: 'settings',
       settings,
+      cardMappings,
+      rmCards,
+      rmCardsError,
       notice: req.query.notice || null,
     });
+  })
+);
+
+// --- Credit card mappings (last-4 -> RM card) ------------------------------
+router.post(
+  '/settings/card-mappings',
+  wrap(async (req, res) => {
+    const last4 = String(req.body.last4 || '').replace(/\D/g, '').slice(-4);
+    const rmCardId = String(req.body.rm_card_id || '').trim();
+    const rmCardName = String(req.body.rm_card_name || '').trim() || null;
+    if (last4.length !== 4 || !rmCardId) {
+      return res.redirect('/settings?notice=' + encodeURIComponent('Enter the last 4 digits and pick a card.'));
+    }
+    await query(
+      `INSERT INTO card_mappings (last4, rm_card_id, rm_card_name)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (last4) DO UPDATE SET rm_card_id = EXCLUDED.rm_card_id, rm_card_name = EXCLUDED.rm_card_name`,
+      [last4, rmCardId, rmCardName]
+    );
+    res.redirect('/settings?notice=' + encodeURIComponent(`Mapped •••• ${last4} → ${rmCardName || rmCardId}.`));
+  })
+);
+
+router.post(
+  '/settings/card-mappings/:id/delete',
+  wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isInteger(id)) await query('DELETE FROM card_mappings WHERE id = $1', [id]);
+    res.redirect('/settings?notice=' + encodeURIComponent('Mapping removed.'));
   })
 );
 
@@ -165,12 +213,18 @@ router.get(
     // endpoints contain commas in embeds). Defaults to hunting for the credit
     // card transaction's child property/GL allocation structure.
     const defaults = [
-      '/CreditCardTransactions/1?embeds=Charges',
-      '/CreditCardTransactions/1?embeds=GLAllocations',
-      '/CreditCardTransactions/1?embeds=Allocations',
-      '/CreditCardTransactions/1?embeds=GLTransactions',
-      '/CreditCardTransactions/1?embeds=Account',
-      '/CreditCardTransactions/1?embeds=Properties',
+      // Hunt for the property/GL allocation child structure.
+      '/CreditCardTransactions/1?embeds=Expenses',
+      '/CreditCardTransactions/1?embeds=GLAccountAllocations',
+      '/CreditCardTransactions/1?embeds=Distributions',
+      '/CreditCardTransactions/1?embeds=CreditCardTransactionGLAllocations',
+      '/CreditCardTransactions/1?embeds=Details',
+      '/CreditCardTransactions/1?embeds=Lines',
+      // Hunt for the attachment endpoint/structure.
+      '/CreditCardTransactions/1?embeds=Attachments',
+      '/CreditCardTransactions/1?embeds=Files',
+      '/Attachments?pageSize=1',
+      '/Files?pageSize=1',
     ];
     const eps = req.query.eps ? String(req.query.eps).split('||') : defaults;
 

@@ -143,6 +143,13 @@ code {
 .page-head {
   margin-bottom: 24px;
 }
+.page-head--row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
 .page-title {
   font-family: var(--serif);
   font-weight: 600;

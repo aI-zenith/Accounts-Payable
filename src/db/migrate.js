@@ -39,6 +39,16 @@ const STATEMENTS = [
   `ALTER TABLE invoices ADD COLUMN IF NOT EXISTS mime_type text`,
   // stored_path is now optional (legacy/disk fallback only).
   `ALTER TABLE invoices ALTER COLUMN stored_path DROP NOT NULL`,
+
+  // Map a credit card's last-4 digits to a Rent Manager credit card id, so the
+  // push posts to the right card (e.g. 6760 -> "Chase ...7202").
+  `CREATE TABLE IF NOT EXISTS card_mappings (
+     id           serial PRIMARY KEY,
+     last4        text NOT NULL UNIQUE,
+     rm_card_id   text NOT NULL,
+     rm_card_name text,
+     created_at   timestamptz DEFAULT now()
+   )`,
 ];
 
 export async function runMigrations() {

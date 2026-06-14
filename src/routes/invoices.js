@@ -124,30 +124,36 @@ router.get(
 );
 
 // --- POST /upload ----------------------------------------------------------
+// Accepts one OR many PDFs (bulk). Each is stored and extraction kicked off.
 router.post(
   '/upload',
   (req, res, next) =>
-    upload.single('invoice')(req, res, (err) => {
+    upload.array('invoices', 50)(req, res, (err) => {
       if (err) {
         return res.redirect('/?notice=' + encodeURIComponent(err.message));
       }
       next();
     }),
   wrap(async (req, res) => {
-    if (!req.file) {
-      return res.redirect('/?notice=' + encodeURIComponent('Please choose a PDF to upload.'));
+    const files = req.files || [];
+    if (files.length === 0) {
+      return res.redirect('/?notice=' + encodeURIComponent('Please choose one or more PDFs to upload.'));
     }
-    const { rows } = await query(
-      `INSERT INTO invoices (original_name, status, file_data, mime_type)
-       VALUES ($1, 'pending', $2, $3) RETURNING id`,
-      [req.file.originalname, req.file.buffer, req.file.mimetype]
-    );
-    const id = rows[0].id;
+    for (const file of files) {
+      const { rows } = await query(
+        `INSERT INTO invoices (original_name, status, file_data, mime_type)
+         VALUES ($1, 'pending', $2, $3) RETURNING id`,
+        [file.originalname, file.buffer, file.mimetype]
+      );
+      // Kick off extraction without blocking the response.
+      processInvoice(rows[0].id, file.buffer);
+    }
 
-    // Kick off extraction without blocking the response.
-    processInvoice(id, req.file.buffer);
-
-    res.redirect('/?notice=' + encodeURIComponent(`Uploaded "${req.file.originalname}" — extracting…`));
+    const msg =
+      files.length === 1
+        ? `Uploaded "${files[0].originalname}" — extracting…`
+        : `Uploaded ${files.length} receipts — extracting…`;
+    res.redirect('/?notice=' + encodeURIComponent(msg));
   })
 );
 
@@ -242,6 +248,7 @@ router.post(
       total: normalizeNumber(b.total),
       property_reference: b.property_reference || null,
       credit_card: b.credit_card || null,
+      card_last4: b.card_last4 ? String(b.card_last4).replace(/\D/g, '').slice(-4) : null,
       currency: b.currency || null,
       line_items: lineItems,
     };
@@ -304,59 +311,100 @@ function buildCreditCardTransaction({ card, vendor, property, d }) {
   };
 }
 
+// Resolve the RM credit card: prefer the configured last-4 mapping, then fall
+// back to a fuzzy match on the card nickname. Returns { CreditCardID } or null.
+async function resolveCard(d) {
+  const last4 = d.card_last4 ? String(d.card_last4).replace(/\D/g, '').slice(-4) : null;
+  if (last4) {
+    const { rows } = await query('SELECT rm_card_id FROM card_mappings WHERE last4 = $1', [last4]);
+    if (rows[0]) return { CreditCardID: rows[0].rm_card_id };
+  }
+  if (d.credit_card) {
+    return findCreditCardByName(d.credit_card);
+  }
+  return null;
+}
+
+// Core push logic, reused by the single-invoice and push-all routes.
+// Returns { ok:boolean, status:string, message:string }.
+async function pushInvoice(inv) {
+  const d = inv.extracted || {};
+  const setStatus = (status, msg) =>
+    query('UPDATE invoices SET status = $2, error_msg = $3, updated_at = now() WHERE id = $1', [
+      inv.id,
+      status,
+      status === 'pushed' ? null : msg,
+    ]);
+
+  try {
+    // 1) Credit card — required.
+    const card = await resolveCard(d);
+    if (!card) {
+      const which = d.card_last4 || d.credit_card || '(none)';
+      const msg = `Credit card not found: ${which}`;
+      await setStatus('needs_review', msg);
+      return { ok: false, status: 'needs_review', message: msg };
+    }
+
+    // 2) Vendor — match by merchant name, create if missing.
+    let vendor = d.vendor_name ? await findVendorByName(d.vendor_name) : null;
+    if (!vendor && d.vendor_name) vendor = await createVendor(d.vendor_name);
+    if (!vendor) {
+      const msg = 'Needs review: no vendor/merchant on the receipt.';
+      await setStatus('needs_review', msg);
+      return { ok: false, status: 'needs_review', message: msg };
+    }
+
+    // 3) Property/job — flag for manual review if unmatched.
+    const property = d.property_reference ? await findPropertyByName(d.property_reference) : null;
+    if (!property) {
+      const msg = `Needs review: property/job not matched ("${d.property_reference || ''}").`;
+      await setStatus('needs_review', msg);
+      return { ok: false, status: 'needs_review', message: msg };
+    }
+
+    // 4) Create the transaction.
+    const txnId = await createCreditCardTransaction(buildCreditCardTransaction({ card, vendor, property, d }));
+    await query(
+      "UPDATE invoices SET status = 'pushed', rm_project_id = $2, error_msg = NULL, updated_at = now() WHERE id = $1",
+      [inv.id, txnId != null ? String(txnId) : null]
+    );
+    return { ok: true, status: 'pushed', message: `Credit card transaction ${txnId ?? 'created'}.` };
+  } catch (err) {
+    console.error(`[invoices] push failed for #${inv.id}:`, err.message);
+    const msg = `Push failed: ${err.message}`;
+    await setStatus('needs_review', msg);
+    return { ok: false, status: 'needs_review', message: msg };
+  }
+}
+
 // --- POST /invoice/:id/push -----------------------------------------------
-// Pushes the invoice to Rent Manager as a Credit Card Transaction.
 router.post(
   '/invoice/:id/push',
   loadInvoice,
   wrap(async (req, res) => {
-    const inv = req.invoice;
-    const d = inv.extracted || {};
+    const result = await pushInvoice(req.invoice);
+    const prefix = result.ok ? 'Pushed to Rent Manager — ' : '';
+    return res.redirect(`/invoice/${req.invoice.id}?notice=` + encodeURIComponent(prefix + result.message));
+  })
+);
 
-    // Flag for manual review (no silent failures): keep the row, record why.
-    const flag = async (msg) => {
-      await query(
-        "UPDATE invoices SET status = 'needs_review', error_msg = $2, updated_at = now() WHERE id = $1",
-        [inv.id, msg]
-      );
-      return res.redirect(`/invoice/${inv.id}?notice=` + encodeURIComponent(msg));
-    };
-
-    try {
-      // 1) Credit card — required; a missing/unmatched card is a hard stop.
-      if (!d.credit_card) return flag('Needs review: no credit card found on the invoice.');
-      const card = await findCreditCardByName(d.credit_card);
-      if (!card) return flag(`Credit card not found: ${d.credit_card}`);
-
-      // 2) Vendor — match by merchant name, create if it doesn't exist.
-      let vendor = d.vendor_name ? await findVendorByName(d.vendor_name) : null;
-      if (!vendor && d.vendor_name) {
-        vendor = await createVendor(d.vendor_name);
-      }
-      if (!vendor) return flag('Needs review: no vendor/merchant on the invoice.');
-
-      // 3) Property/job — flag for manual review if unmatched.
-      const property = d.property_reference ? await findPropertyByName(d.property_reference) : null;
-      if (!property) {
-        return flag(`Needs review: property/job not matched ("${d.property_reference || ''}").`);
-      }
-
-      // 4) Create the transaction.
-      const payload = buildCreditCardTransaction({ card, vendor, property, d });
-      const txnId = await createCreditCardTransaction(payload);
-
-      await query(
-        "UPDATE invoices SET status = 'pushed', rm_project_id = $2, updated_at = now() WHERE id = $1",
-        [inv.id, txnId != null ? String(txnId) : null]
-      );
-      return res.redirect(
-        `/invoice/${inv.id}?notice=` +
-          encodeURIComponent(`Pushed to Rent Manager — credit card transaction ${txnId ?? 'created'}.`)
-      );
-    } catch (err) {
-      console.error(`[invoices] push failed for #${inv.id}:`, err.message);
-      return flag(`Push failed: ${err.message}`);
+// --- POST /push-all : push every invoice that is ready ---------------------
+router.post(
+  '/push-all',
+  wrap(async (req, res) => {
+    const { rows } = await query(
+      "SELECT * FROM invoices WHERE status IN ('extracted', 'confirmed', 'needs_review') ORDER BY created_at ASC"
+    );
+    let pushed = 0;
+    let flagged = 0;
+    for (const inv of rows) {
+      const r = await pushInvoice(inv);
+      if (r.ok) pushed += 1;
+      else flagged += 1;
     }
+    const msg = `Push all: ${pushed} pushed, ${flagged} need review${rows.length === 0 ? ' (nothing ready)' : ''}.`;
+    return res.redirect('/?notice=' + encodeURIComponent(msg));
   })
 );
 

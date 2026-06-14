@@ -66,6 +66,10 @@
           <input class="input" type="text" name="credit_card" value="<%= v(data.credit_card) %>" placeholder="e.g. wood ave" />
         </label>
         <label class="field field--narrow">
+          <span class="field__label">Card last 4</span>
+          <input class="input num" type="text" name="card_last4" value="<%= v(data.card_last4) %>" maxlength="4" placeholder="6760" />
+        </label>
+        <label class="field field--narrow">
           <span class="field__label">Currency</span>
           <input class="input" type="text" name="currency" value="<%= v(data.currency) %>" maxlength="8" />
         </label>

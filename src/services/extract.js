@@ -21,6 +21,7 @@ Use exactly this schema and these keys:
   "total": number|null,
   "property_reference": string|null,
   "credit_card": string|null,
+  "card_last4": string|null,
   "currency": string|null
 }
 
@@ -30,8 +31,10 @@ Rules:
 - Numbers must be plain JSON numbers (no currency symbols, no thousands separators).
 - If a value is not present on the invoice, use null (or [] for line_items).
 - "property_reference" is any property/unit/job identifier the invoice mentions.
-- "credit_card" is the card/account the purchase was charged to if shown (e.g.
-  a card nickname like "wood ave", or the last 4 digits) — else null.`;
+- "credit_card" is the card/account nickname or label if shown (e.g. "wood ave") — else null.
+- "card_last4" is the last 4 digits of the card/account number if shown anywhere
+  on the receipt (e.g. "ending in 6760", "XXXX6760", "************6760") — else null.
+- "property_reference" should prefer any PO number / Job name on the receipt.`;
 
 // Build an Anthropic client from resolved credentials.
 async function getClient() {

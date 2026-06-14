@@ -10,16 +10,17 @@
     const chosen = document.getElementById('chosenFile');
     const actions = document.getElementById('dropzoneActions');
 
-    const showChosen = (file) => {
-      if (!file) return;
-      chosen.textContent = file.name;
+    const showChosen = (files) => {
+      if (!files || !files.length) return;
+      chosen.textContent =
+        files.length === 1 ? files[0].name : `${files.length} files selected`;
       chosen.hidden = false;
       actions.hidden = false;
     };
 
     if (browse) browse.addEventListener('click', () => input.click());
     if (input)
-      input.addEventListener('change', () => showChosen(input.files[0]));
+      input.addEventListener('change', () => showChosen(input.files));
 
     ['dragenter', 'dragover'].forEach((evt) =>
       zone.addEventListener(evt, (e) => {
@@ -35,10 +36,10 @@
       })
     );
     zone.addEventListener('drop', (e) => {
-      const file = e.dataTransfer && e.dataTransfer.files[0];
-      if (file && input) {
-        input.files = e.dataTransfer.files;
-        showChosen(file);
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length && input) {
+        input.files = files;
+        showChosen(files);
       }
     });
   }
@@ -70,6 +71,18 @@
     setTimeout(() => window.location.reload(), 4000);
   } else if (poller) {
     setTimeout(() => window.location.reload(), 8000);
+  }
+
+  // ---- settings: capture chosen card name into hidden field ----
+  const rmCardSelect = document.getElementById('rmCardSelect');
+  const rmCardName = document.getElementById('rmCardName');
+  if (rmCardSelect && rmCardName) {
+    const sync = () => {
+      const opt = rmCardSelect.options[rmCardSelect.selectedIndex];
+      rmCardName.value = opt ? opt.getAttribute('data-name') || '' : '';
+    };
+    rmCardSelect.addEventListener('change', sync);
+    sync();
   }
 
   // ---- settings: connection tests ----
