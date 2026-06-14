@@ -363,104 +363,43 @@ export async function createCreditCardTransaction(payload) {
   return extractId(body, location, ['CreditCardTransactionID', 'TransactionID', 'ID']);
 }
 
-// Derive the rmx "/api" host (where file upload + attachment live) from the
-// configured WAPI base. e.g. https://bluegm.api.rentmanager.com ->
-// https://bluegm.rmx.rentmanager.com/api. Overridable via RENTMANAGER_RMX_BASE_URL.
-function rmxBaseFrom(apiBase) {
-  if (process.env.RENTMANAGER_RMX_BASE_URL) return trimSlash(process.env.RENTMANAGER_RMX_BASE_URL);
-  if (!apiBase) return null;
-  try {
-    const u = new URL(apiBase);
-    const host = u.host.replace(/\.api\.rentmanager\.com$/i, '.rmx.rentmanager.com');
-    return `https://${host}/api`;
-  } catch {
-    return null;
-  }
-}
-
-async function getRmxBase() {
-  const { rm } = await getCredentials();
-  const base = rmxBaseFrom(trimSlash(rm.baseUrl));
-  if (!base) throw new Error('Could not derive the Rent Manager rmx (/api) base URL.');
-  return base;
-}
-
 /**
- * Step 1 of attaching: upload the raw bytes as multipart/form-data to the rmx
- * /Files endpoint and return the new FileID. (The dedicated WAPI host has no
- * /Files resource — uploads only exist on the rmx /api host.)
- */
-async function uploadFile(fileBuffer, filename) {
-  const base = await getRmxBase();
-  const name = filename || 'receipt.pdf';
-
-  const doUpload = (token) => {
-    const form = new FormData();
-    // The file part is named "Content"; the filename carries the extension.
-    form.append('Content', new Blob([fileBuffer], { type: 'application/pdf' }), name);
-    form.append('Name', name);
-    return fetch(`${base}/Files`, {
-      method: 'POST',
-      // Do NOT set Content-Type — fetch adds the multipart boundary itself.
-      headers: { Accept: 'application/json', 'X-RM12Api-ApiToken': token },
-      body: form,
-    });
-  };
-
-  let token = await getToken();
-  let res = await doUpload(token);
-  if (res.status === 401) {
-    token = await authenticate();
-    res = await doUpload(token);
-  }
-
-  const text = await res.text();
-  if (!res.ok) {
-    const err = new Error(`Rent Manager file upload failed: HTTP ${res.status} ${String(text).slice(0, 300)}`);
-    err.status = res.status;
-    throw err;
-  }
-  let body = null;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = text;
-  }
-  const obj = Array.isArray(body) ? body[0] : body;
-  const fileId = obj && (obj.FileID ?? obj.FileId ?? obj.ID);
-  if (fileId == null) {
-    throw new Error(`File uploaded but no FileID was returned: ${String(text).slice(0, 200)}`);
-  }
-  return fileId;
-}
-
-/**
- * Attach a receipt PDF to a credit card transaction. Two steps, confirmed
- * against a live attachment on the `bluegm` account:
- *   1. Upload the bytes (multipart) to the rmx /Files endpoint -> FileID.
- *   2. POST the attachment record linking that FileID to the transaction:
- *      { EntityType: 38, EntityKeyID: <txnId>, FileID, Description }.
- *      EntityType 38 = CreditCardTransaction (eFileAttachmentRelatedObjectTypes).
+ * Attach a receipt PDF to a credit card transaction via the WAPI (api host),
+ * where our token is valid. (The rmx host that serves files needs an active web
+ * session — 401 for an API token — so it can't be used from an integration.)
+ *
+ * The body mirrors the EXACT shape RM stores, read off a live attachment:
+ *   - EntityType is the string "CreditCardTransaction"; EntityKeyID is the txn id.
+ *   - File.Name has NO extension; File.Extension INCLUDES the dot (".pdf").
+ *   - File.Content is the bytes as base64 (RM writes them to its file depot and
+ *     back-fills Path/Token/DownloadURL/FileID).
  * Non-fatal by contract (the route swallows errors) so a failure here never
  * undoes the already-created transaction. Returns the new FileAttachmentID.
  */
 export async function attachReceipt(transactionId, fileBuffer, filename) {
-  const name = filename || 'receipt.pdf';
-  const buf = Buffer.isBuffer(fileBuffer) ? fileBuffer : Buffer.from(fileBuffer);
+  const base64 = Buffer.isBuffer(fileBuffer)
+    ? fileBuffer.toString('base64')
+    : Buffer.from(fileBuffer).toString('base64');
+  const raw = filename || 'receipt.pdf';
+  const dot = raw.lastIndexOf('.');
+  const baseName = dot > 0 ? raw.slice(0, dot) : raw; // "H6206-427024 Receipt"
+  const extension = (dot >= 0 ? raw.slice(dot) : '.pdf').toLowerCase(); // ".pdf" (with dot)
 
-  // Step 1 — upload to RM document storage to obtain a FileID.
-  const fileId = await uploadFile(buf, name);
-
-  // Step 2 — link the uploaded file to the credit card transaction.
-  const base = await getRmxBase();
-  const { body, location } = await request(`${base}/CreditCardTransactions/${transactionId}/Attachments`, {
-    method: 'POST',
-    body: JSON.stringify({
-      EntityType: 38,
+  const payload = [
+    {
+      EntityType: 'CreditCardTransaction',
       EntityKeyID: Number(transactionId),
-      FileID: fileId,
-      Description: name,
-    }),
+      Description: raw,
+      File: {
+        Name: baseName,
+        Extension: extension,
+        Content: base64,
+      },
+    },
+  ];
+  const { body, location } = await request(`/CreditCardTransactions/${transactionId}/Attachments`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
   return extractId(body, location, ['FileAttachmentID', 'FileID', 'ID']);
 }
