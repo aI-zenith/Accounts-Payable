@@ -363,45 +363,86 @@ export async function createCreditCardTransaction(payload) {
   return extractId(body, location, ['CreditCardTransactionID', 'TransactionID', 'ID']);
 }
 
+// Derive the rmx "/api" host (where file attachment uploads live) from the
+// configured WAPI base. e.g. https://bluegm.api.rentmanager.com ->
+// https://bluegm.rmx.rentmanager.com/api. Overridable via RENTMANAGER_RMX_BASE_URL.
+async function getRmxBase() {
+  if (process.env.RENTMANAGER_RMX_BASE_URL) return trimSlash(process.env.RENTMANAGER_RMX_BASE_URL);
+  const { rm } = await getCredentials();
+  const apiBase = trimSlash(rm.baseUrl);
+  if (!apiBase) throw new Error('Rent Manager base URL is not configured.');
+  try {
+    const host = new URL(apiBase).host.replace(/\.api\.rentmanager\.com$/i, '.rmx.rentmanager.com');
+    return `https://${host}/api`;
+  } catch {
+    throw new Error('Could not derive the Rent Manager rmx (/api) base URL.');
+  }
+}
+
 /**
- * Attach a receipt PDF to a credit card transaction via the WAPI (api host),
- * where our token is valid. (The rmx host that serves files needs an active web
- * session — 401 for an API token — so it can't be used from an integration.)
- *
- * The body mirrors the EXACT shape RM stores, read off a live attachment:
- *   - EntityType is the string "CreditCardTransaction"; EntityKeyID is the txn id.
- *   - File.Name has NO extension; File.Extension INCLUDES the dot (".pdf").
- *   - File.Content is the bytes as base64 (RM writes them to its file depot and
- *     back-fills Path/Token/DownloadURL/FileID).
+ * Attach a receipt PDF to a credit card transaction. Confirmed by reverse-
+ * engineering RM's own web client and live-testing on the `bluegm` account:
+ *   - POST {rmx}/api/CreditCardTransactions/{id}/Attachments  (the rmx host, not
+ *     the dedicated WAPI host — uploads only exist there).
+ *   - Body is multipart/form-data, NOT JSON:
+ *       • `dataModel`  = a JSON STRING { EntityKeyID, EntityType: 38, Description }
+ *                        (38 = CreditCardTransaction).
+ *       • the file part's FIELD NAME is the filename itself; value is the bytes.
+ *   - Response is an array; the new record is [0] with FileAttachmentID/FileID.
+ * Auth: the API token, sent both as X-RM12Api-ApiToken and as a Bearer header so
+ * whichever the rmx host expects is satisfied; a 401 re-auths once.
  * Non-fatal by contract (the route swallows errors) so a failure here never
  * undoes the already-created transaction. Returns the new FileAttachmentID.
  */
 export async function attachReceipt(transactionId, fileBuffer, filename) {
-  const base64 = Buffer.isBuffer(fileBuffer)
-    ? fileBuffer.toString('base64')
-    : Buffer.from(fileBuffer).toString('base64');
-  const raw = filename || 'receipt.pdf';
-  const dot = raw.lastIndexOf('.');
-  const baseName = dot > 0 ? raw.slice(0, dot) : raw; // "H6206-427024 Receipt"
-  const extension = (dot >= 0 ? raw.slice(dot) : '.pdf').toLowerCase(); // ".pdf" (with dot)
-
-  const payload = [
-    {
-      EntityType: 'CreditCardTransaction',
-      EntityKeyID: Number(transactionId),
-      Description: raw,
-      File: {
-        Name: baseName,
-        Extension: extension,
-        Content: base64,
-      },
-    },
-  ];
-  const { body, location } = await request(`/CreditCardTransactions/${transactionId}/Attachments`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
+  const buf = Buffer.isBuffer(fileBuffer) ? fileBuffer : Buffer.from(fileBuffer);
+  const name = filename || 'receipt.pdf';
+  const base = await getRmxBase();
+  const url = `${base}/CreditCardTransactions/${transactionId}/Attachments`;
+  const dataModel = JSON.stringify({
+    EntityKeyID: Number(transactionId),
+    EntityType: 38,
+    Description: name,
   });
-  return extractId(body, location, ['FileAttachmentID', 'FileID', 'ID']);
+
+  const doPost = (token) => {
+    const form = new FormData();
+    form.append('dataModel', dataModel);
+    // The Angular client names the file part with the filename itself.
+    form.append(name, new Blob([buf], { type: 'application/pdf' }), name);
+    return fetch(url, {
+      method: 'POST',
+      // Do NOT set Content-Type — fetch adds the multipart boundary.
+      headers: {
+        Accept: 'application/json',
+        'X-RM12Api-ApiToken': token,
+        Authorization: `Bearer ${token}`,
+      },
+      body: form,
+    });
+  };
+
+  let token = await getToken();
+  let res = await doPost(token);
+  if (res.status === 401) {
+    token = await authenticate();
+    res = await doPost(token);
+  }
+
+  const text = await res.text();
+  if (!res.ok) {
+    const err = new Error(`Rent Manager receipt attach failed: HTTP ${res.status} ${String(text).slice(0, 300)}`);
+    err.status = res.status;
+    throw err;
+  }
+  let body = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = text;
+  }
+  const rec = Array.isArray(body) ? body[0] : body;
+  return (rec && (rec.FileAttachmentID ?? rec.FileID ?? rec.ID)) ?? null;
 }
 
 // Test-only helper used by the Settings connection test.
