@@ -547,21 +547,65 @@ const ENTITY_MAP = {
   vendor: { path: '/Vendors?pageSize=1000', id: ['VendorID', 'ID'], name: ['Name', 'Payee'] },
 };
 
+// Read-only tenant search for task linking. Server-side filter via the RM
+// `filters=Name,contains,<q>` param, the exact fields requested, short in-memory
+// cache, and NEVER throws (returns [] if RM is unavailable). Credentials stay on
+// the server — the frontend only ever calls our proxy.
+const tenantCache = new Map();
+const TENANT_TTL_MS = 5 * 60 * 1000;
+
+export async function searchTenants(q) {
+  const term = String(q || '').trim();
+  const key = term.toLowerCase();
+  const hit = tenantCache.get(key);
+  if (hit && hit.expires > Date.now()) return hit.value;
+
+  let value = [];
+  try {
+    const fields = 'TenantID,Name,Email,Phone,UnitID,PropertyID';
+    let path = `/Tenants?fields=${fields}&pageSize=50`;
+    if (term) path += `&filters=Name,contains,${encodeURIComponent(term)}`;
+    const items = await listAll(path);
+    value = items
+      .map((t) => ({
+        id: String(t.TenantID ?? t.ID ?? ''),
+        name: t.Name || '',
+        email: t.Email || '',
+        phone: t.Phone || '',
+        unit: t.UnitID != null ? String(t.UnitID) : '',
+        property: t.PropertyID != null ? String(t.PropertyID) : '',
+      }))
+      .filter((t) => t.name)
+      .slice(0, 50);
+  } catch (err) {
+    console.error('[rmClient] tenant search failed:', err.message);
+    value = [];
+  }
+  tenantCache.set(key, { value, expires: Date.now() + TENANT_TTL_MS });
+  return value;
+}
+
 export async function searchRmEntities(type, q) {
+  if (type === 'tenant') return searchTenants(q);
   const cfg = ENTITY_MAP[type];
   if (!cfg) return [];
-  const items = await listAll(cfg.path);
-  const needle = String(q || '').toLowerCase();
-  const out = [];
-  for (const it of items) {
-    const name = cfg.name.map((k) => it[k]).find(Boolean);
-    if (!name) continue;
-    if (needle && !String(name).toLowerCase().includes(needle)) continue;
-    const id = cfg.id.map((k) => it[k]).find((v) => v != null);
-    out.push({ id: String(id ?? ''), name: String(name) });
-    if (out.length >= 25) break;
+  try {
+    const items = await listAll(cfg.path);
+    const needle = String(q || '').toLowerCase();
+    const out = [];
+    for (const it of items) {
+      const name = cfg.name.map((k) => it[k]).find(Boolean);
+      if (!name) continue;
+      if (needle && !String(name).toLowerCase().includes(needle)) continue;
+      const id = cfg.id.map((k) => it[k]).find((v) => v != null);
+      out.push({ id: String(id ?? ''), name: String(name) });
+      if (out.length >= 25) break;
+    }
+    return out;
+  } catch (err) {
+    console.error('[rmClient] entity search failed:', err.message);
+    return [];
   }
-  return out;
 }
 
 // Test-only helper used by the Settings connection test.
