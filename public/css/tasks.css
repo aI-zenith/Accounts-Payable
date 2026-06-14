@@ -17,6 +17,10 @@
   color: var(--c-ink);
 }
 .tk * { box-sizing: border-box; }
+/* The HTML `hidden` attribute must win over class-level `display` (e.g. the
+   recorder bar and the Polish overlay both default to display:flex). Without
+   this they would show permanently regardless of the JS toggling `hidden`. */
+.tk [hidden] { display: none !important; }
 .tk a { color: var(--c-acc); text-decoration: none; }
 .tk .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px; color: var(--c-lbl); text-transform: uppercase; }
 .tk .mono { font-family: 'Geist Mono', ui-monospace, monospace; }
