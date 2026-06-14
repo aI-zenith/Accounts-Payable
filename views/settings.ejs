@@ -63,6 +63,35 @@
   </div>
 </form>
 
+<!-- Default expense (GL) account for the allocation line -->
+<section class="card ledger-rule" style="margin-top: 22px;">
+  <header class="card__head">
+    <div class="card__title"><h2>Default expense account</h2></div>
+  </header>
+  <p class="field__hint" style="margin-bottom: 14px;">
+    Rent Manager requires a GL account on each credit card transaction. Pushed
+    transactions post to this account (you can re-categorize in RM later).
+    <% if (settings.default_gl_account_name) { %>
+      Currently: <code><%= settings.default_gl_account_name %></code>.
+    <% } %>
+  </p>
+  <form action="/settings/default-gl" method="post" class="fieldrow" id="glForm">
+    <label class="field">
+      <span class="field__label">Expense account</span>
+      <select class="input" name="default_gl_account_id" id="glSelect" required <%= glAccounts.length ? '' : 'disabled' %>>
+        <option value="" disabled <%= settings.default_gl_account_id ? '' : 'selected' %>>Choose an account…</option>
+        <% glAccounts.forEach((a) => { %>
+          <option value="<%= a.id %>" data-name="<%= a.name %>" <%= String(settings.default_gl_account_id) === a.id ? 'selected' : '' %>><%= a.name %><%= a.ref ? ' (' + a.ref + ')' : '' %></option>
+        <% }) %>
+      </select>
+      <input type="hidden" name="default_gl_account_name" id="glName" value="<%= settings.default_gl_account_name %>" />
+    </label>
+    <div class="field field--narrow" style="justify-content: flex-end;">
+      <button type="submit" class="btn btn--ghost">Save account</button>
+    </div>
+  </form>
+</section>
+
 <!-- Credit card mappings (last-4 -> Rent Manager card) -->
 <section class="card ledger-rule" style="margin-top: 22px;">
   <header class="card__head">

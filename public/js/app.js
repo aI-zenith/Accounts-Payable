@@ -85,6 +85,18 @@
     sync();
   }
 
+  // ---- settings: capture chosen GL account name into hidden field ----
+  const glSelect = document.getElementById('glSelect');
+  const glName = document.getElementById('glName');
+  if (glSelect && glName) {
+    const syncGl = () => {
+      const opt = glSelect.options[glSelect.selectedIndex];
+      glName.value = opt ? opt.getAttribute('data-name') || '' : '';
+    };
+    glSelect.addEventListener('change', syncGl);
+    syncGl();
+  }
+
   // ---- settings: connection tests ----
   document.querySelectorAll('[data-test]').forEach((btn) => {
     btn.addEventListener('click', async () => {

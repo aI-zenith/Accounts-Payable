@@ -207,6 +207,12 @@ export async function listCreditCards() {
   return listAll('/CreditCards?pageSize=500');
 }
 
+// Expense GL accounts, excluding parent (header) accounts you can't post to.
+export async function listExpenseGLAccounts() {
+  const all = await listAll('/GLAccounts?filters=GLAccountType,eq,Expense&pageSize=500');
+  return all.filter((a) => !a.IsParent);
+}
+
 export async function findCreditCardByName(name) {
   const cards = await listCreditCards();
   return bestMatch(name, cards, [(c) => c.Name]);

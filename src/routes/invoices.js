@@ -295,10 +295,11 @@ function memoFrom(d) {
 //     property/expense allocation (the grey row in the RM form).
 // Expense account (GLAccountID) is intentionally omitted for now per request
 // ("just the total"); add it later when a mapping is configured.
-function buildCreditCardTransaction({ card, vendor, property, d }) {
+function buildCreditCardTransaction({ card, vendor, property, glAccountId, d }) {
   const amount = normalizeNumber(d.total) ?? 0;
   const detail = {
     PropertyID: property.PropertyID ?? property.ID,
+    GLAccountID: glAccountId,
     Amount: amount,
     Memo: (d.invoice_number || memoFrom(d) || '').slice(0, 250),
   };
@@ -365,8 +366,17 @@ async function pushInvoice(inv) {
       return { ok: false, status: 'needs_review', message: msg };
     }
 
-    // 4) Create the transaction.
-    const txnId = await createCreditCardTransaction(buildCreditCardTransaction({ card, vendor, property, d }));
+    // 4) Expense (GL) account — required by Rent Manager on the allocation line.
+    const { rows: sRows } = await query('SELECT default_gl_account_id FROM settings WHERE id = 1');
+    const glAccountId = sRows[0] && sRows[0].default_gl_account_id;
+    if (!glAccountId) {
+      const msg = 'Needs review: choose a default expense account in Settings (Rent Manager requires a GL account).';
+      await setStatus('needs_review', msg);
+      return { ok: false, status: 'needs_review', message: msg };
+    }
+
+    // 5) Create the transaction.
+    const txnId = await createCreditCardTransaction(buildCreditCardTransaction({ card, vendor, property, glAccountId, d }));
     await query(
       "UPDATE invoices SET status = 'pushed', rm_project_id = $2, error_msg = NULL, updated_at = now() WHERE id = $1",
       [inv.id, txnId != null ? String(txnId) : null]

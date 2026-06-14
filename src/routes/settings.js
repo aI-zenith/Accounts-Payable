@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { query } from '../db/pool.js';
 import { encrypt, decrypt, mask } from '../services/crypto.js';
 import { getCredentials } from '../services/credentials.js';
-import { authenticate, _resetTokenCache, request, listCreditCards } from '../services/rmClient.js';
+import { authenticate, _resetTokenCache, request, listCreditCards, listExpenseGLAccounts } from '../services/rmClient.js';
 
 const router = Router();
 
@@ -12,7 +12,7 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 // Read the settings row and produce safe, masked display values.
 async function loadSettingsView() {
   const { rows } = await query(
-    'SELECT rm_subdomain, rm_username, rm_password, anthropic_api_key FROM settings WHERE id = 1'
+    'SELECT rm_subdomain, rm_username, rm_password, anthropic_api_key, default_gl_account_id, default_gl_account_name FROM settings WHERE id = 1'
   );
   const row = rows[0] || {};
 
@@ -38,6 +38,8 @@ async function loadSettingsView() {
     has_rm_username: Boolean(rmUser),
     has_rm_password: Boolean(rmPass),
     has_anthropic: Boolean(claudeKey),
+    default_gl_account_id: row.default_gl_account_id || '',
+    default_gl_account_name: row.default_gl_account_name || '',
   };
 }
 
@@ -52,7 +54,7 @@ router.get(
       'SELECT id, last4, rm_card_id, rm_card_name FROM card_mappings ORDER BY last4'
     );
 
-    // Live list of RM credit cards for the picker (best-effort).
+    // Live lists from RM for the pickers (best-effort).
     let rmCards = [];
     let rmCardsError = null;
     try {
@@ -62,6 +64,14 @@ router.get(
       rmCardsError = err.message;
     }
 
+    let glAccounts = [];
+    try {
+      const accts = await listExpenseGLAccounts();
+      glAccounts = accts.map((a) => ({ id: String(a.GLAccountID), name: a.Name, ref: a.Reference }));
+    } catch {
+      glAccounts = [];
+    }
+
     res.render('settings', {
       title: 'Settings',
       active: 'settings',
@@ -69,6 +79,7 @@ router.get(
       cardMappings,
       rmCards,
       rmCardsError,
+      glAccounts,
       notice: req.query.notice || null,
     });
   })
@@ -100,6 +111,21 @@ router.post(
     const id = Number(req.params.id);
     if (Number.isInteger(id)) await query('DELETE FROM card_mappings WHERE id = $1', [id]);
     res.redirect('/settings?notice=' + encodeURIComponent('Mapping removed.'));
+  })
+);
+
+// --- Default expense (GL) account -----------------------------------------
+router.post(
+  '/settings/default-gl',
+  wrap(async (req, res) => {
+    const id = String(req.body.default_gl_account_id || '').trim();
+    const name = String(req.body.default_gl_account_name || '').trim() || null;
+    if (!id) return res.redirect('/settings?notice=' + encodeURIComponent('Choose an expense account.'));
+    await query(
+      'UPDATE settings SET default_gl_account_id = $1, default_gl_account_name = $2, updated_at = now() WHERE id = 1',
+      [id, name]
+    );
+    res.redirect('/settings?notice=' + encodeURIComponent(`Default expense account set to ${name || id}.`));
   })
 );
 

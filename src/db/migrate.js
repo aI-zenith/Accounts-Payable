@@ -40,6 +40,10 @@ const STATEMENTS = [
   // stored_path is now optional (legacy/disk fallback only).
   `ALTER TABLE invoices ALTER COLUMN stored_path DROP NOT NULL`,
 
+  // Default expense (GL) account for the credit card transaction allocation.
+  `ALTER TABLE settings ADD COLUMN IF NOT EXISTS default_gl_account_id text`,
+  `ALTER TABLE settings ADD COLUMN IF NOT EXISTS default_gl_account_name text`,
+
   // Map a credit card's last-4 digits to a Rent Manager credit card id, so the
   // push posts to the right card (e.g. 6760 -> "Chase ...7202").
   `CREATE TABLE IF NOT EXISTS card_mappings (
