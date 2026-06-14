@@ -8,7 +8,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   const dueInfo = (t) => { if (!t.due_at) return { label: 'No due date', cls: 'tdue-gray' }; const ms = new Date(t.due_at) - Date.now(); const day = 86400000; if (t.status !== 'done' && ms < 0) return { label: 'Overdue · ' + fmt(t.due_at), cls: 'tdue-red' }; if (ms < day) return { label: 'Today · ' + fmt(t.due_at), cls: 'tdue-red' }; if (ms < 3 * day) return { label: fmt(t.due_at), cls: 'tdue-amber' }; return { label: fmt(t.due_at), cls: 'tdue-gray' }; };
   const tid = 'TSK-' + (1000 + task.id);
-  const back = '/tasks?sel=' + task.id;
+  const back = (typeof backUrl !== 'undefined' && backUrl) ? backUrl : '/tasks?sel=' + task.id;
   const du = dueInfo(task);
   const subDone = (task.subtasks || []).filter((s) => s.done).length;
   const subPct = task.subtasks && task.subtasks.length ? Math.round((subDone / task.subtasks.length) * 100) : 0;
@@ -74,6 +74,7 @@
         </div>
       <% }) %>
       <form method="post" action="/tasks/<%= task.id %>/subtask" style="display:flex;gap:9px;margin-top:10px">
+        <input type="hidden" name="back" value="<%= tabUrl('checklist') %>" />
         <input class="in" name="label" placeholder="Add a checklist item…" required style="font-size:13px" />
         <button class="btng" type="submit">Add</button>
       </form>
@@ -107,6 +108,6 @@
 
 <% if (tab === 'conversation') { %>
   <div style="border-top:1px solid #eceef1;padding:14px 26px;background:#fff">
-    <%- include('comment-composer', { task, currentUser, sendLabel: 'Send' }) %>
+    <%- include('comment-composer', { task, currentUser, sendLabel: 'Send', back: back + '&tab=conversation' }) %>
   </div>
 <% } %>

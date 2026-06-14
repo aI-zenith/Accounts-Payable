@@ -12,14 +12,16 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 
 
 // Parse list filters from the query string.
 function parseFilters(q) {
+  const status = q.status || '';
   return {
-    status: q.status || '',
+    // 'active' is a UI pseudo-status meaning "any open status" (handled via openOnly).
+    status: status === 'active' ? '' : status,
     priority: q.priority || '',
     category: q.category || '',
     assignee: q.assignee || '',
     dueFrom: q.dueFrom || '',
     dueTo: q.dueTo || '',
-    openOnly: q.openOnly === '1' || q.openOnly === 'on',
+    openOnly: q.openOnly === '1' || q.openOnly === 'on' || status === 'active',
     hasTenant: q.hasTenant === '1' || q.hasTenant === 'on',
     q: q.q || '',
     sort: q.sort || 'due_at',
@@ -122,19 +124,33 @@ router.get(
   '/table',
   wrap(async (req, res) => {
     const filters = parseFilters(req.query);
+    const tab = ['conversation', 'checklist', 'files', 'activity'].includes(req.query.tab)
+      ? req.query.tab
+      : 'conversation';
     const [tasks, ctx, saved] = await Promise.all([
       Tasks.listTasks(req.user, filters),
       formContext(),
       Tasks.listSavedFilters(req.user.id),
     ]);
+    let task = null;
+    if (req.query.sel) {
+      task = await Tasks.getTask(Number(req.query.sel), req.user);
+      if (task && task.forbidden) task = null;
+    }
+    const overdue = tasks.filter(
+      (t) => t.due_at && new Date(t.due_at) < new Date() && t.status !== 'done'
+    ).length;
     res.render('tasks/list', {
       title: 'Tasks',
       active: 'tasks',
       taskActive: 'table',
       tasks,
+      overdue,
       filters,
       qs: queryString(filters),
       saved,
+      task,
+      tab,
       ...ctx,
       notice: req.query.notice || null,
     });
@@ -169,14 +185,24 @@ router.get(
   '/board',
   wrap(async (req, res) => {
     const filters = parseFilters(req.query);
+    const tab = ['conversation', 'checklist', 'files', 'activity'].includes(req.query.tab)
+      ? req.query.tab
+      : 'conversation';
     const tasks = await Tasks.listTasks(req.user, filters);
     const columns = Tasks.STATUSES.map((s) => ({ key: s, tasks: tasks.filter((t) => t.status === s) }));
+    let task = null;
+    if (req.query.sel) {
+      task = await Tasks.getTask(Number(req.query.sel), req.user);
+      if (task && task.forbidden) task = null;
+    }
     res.render('tasks/board', {
       title: 'Task board',
       active: 'tasks',
       taskActive: 'board',
       columns,
       statuses: Tasks.STATUSES,
+      task,
+      tab,
       notice: req.query.notice || null,
     });
   })
@@ -379,7 +405,7 @@ router.post(
         comment_id: cid,
       });
     }
-    res.redirect(`/tasks?sel=${id}&tab=conversation`);
+    res.redirect(req.body.back || `/tasks?sel=${id}&tab=conversation`);
   })
 );
 
@@ -389,7 +415,7 @@ router.post(
   wrap(async (req, res) => {
     const id = Number(req.params.id);
     await Tasks.addSubtask(id, req.body.label, req.user);
-    res.redirect(`/tasks?sel=${id}&tab=checklist`);
+    res.redirect(req.body.back || `/tasks?sel=${id}&tab=checklist`);
   })
 );
 router.post(

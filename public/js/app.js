@@ -151,7 +151,7 @@
   });
 
   // ---- auto-submit selects (e.g. inline role change) ----
-  document.querySelectorAll('select[data-autosubmit]').forEach((sel) => {
+  document.querySelectorAll('[data-autosubmit]').forEach((sel) => {
     sel.addEventListener('change', () => {
       if (sel.form) sel.form.submit();
     });
@@ -302,10 +302,10 @@
   });
 
   // ---- tasks: kanban drag ----
-  const board = document.querySelector('.board');
+  const board = document.querySelector('.tkb');
   if (board) {
     let dragged = null;
-    board.querySelectorAll('.card-task').forEach((card) => {
+    board.querySelectorAll('.tkb-card').forEach((card) => {
       card.addEventListener('dragstart', (e) => {
         dragged = card;
         card.classList.add('dragging');
@@ -328,17 +328,19 @@
         e.preventDefault();
         list.classList.remove('drop-hover');
         if (!dragged) return;
-        const status = list.closest('.board__col').dataset.status;
+        const status = list.closest('.tkb-col').dataset.status;
         const id = dragged.dataset.taskId;
-        list.appendChild(dragged);
+        const newCard = list.querySelector('.tkb-newcard');
+        if (newCard) list.insertBefore(dragged, newCard);
+        else list.appendChild(dragged);
         fetch('/tasks/' + id + '/status', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
           body: 'status=' + encodeURIComponent(status),
         }).catch(() => {});
-        board.querySelectorAll('.board__col').forEach((c) => {
-          const el = c.querySelector('.board__count');
-          if (el) el.textContent = c.querySelectorAll('.card-task').length;
+        board.querySelectorAll('.tkb-col').forEach((c) => {
+          const el = c.querySelector('.tkb-count');
+          if (el) el.textContent = c.querySelectorAll('.tkb-card').length;
         });
       });
     });
