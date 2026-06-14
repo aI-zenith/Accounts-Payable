@@ -368,14 +368,15 @@ export async function createCreditCardTransaction(payload) {
  * Called as a separate, non-fatal step so a failure never undoes the
  * already-created transaction. Returns the new attachment/file id.
  *
- * Per the WAPI FileAttachments/Save spec (confirmed against a live 500):
- *   - URL:  POST /Invoices/{id}/FileAttachments  ({id} = the transaction id,
- *           which doubles as the Invoice/Transaction id).
- *   - Body: an ARRAY of FileAttachment objects — a bare object 500s with
- *           "issue retrieving data from the database".
- *   - EntityType is the eFileAttachmentRelatedObjectTypes enum ("Invoice") and
- *     EntityKeyID is that same record id; both must be set or RM can't associate
- *     the record.
+ * Confirmed against live 500s:
+ *   - Body MUST be an ARRAY of FileAttachment objects — a bare object 500s with
+ *     "issue retrieving data from the database".
+ *   - The /{Parent}/{id}/FileAttachments URL drives the parent lookup, so it
+ *     must target the CreditCardTransactions collection: a credit card
+ *     transaction id is NOT an Invoice id (posting to /Invoices/{id} 500s with
+ *     "Unable to locate Invoice with ID …").
+ *   - EntityType is the eFileAttachmentRelatedObjectTypes enum and EntityKeyID
+ *     is the record id; both are set to match the parent.
  *   - The nested File is REQUIRED on create; its Content is a Byte[] carried as
  *     base64 in JSON. RM creates the File and back-fills FileID automatically.
  */
@@ -387,7 +388,7 @@ export async function attachReceipt(transactionId, fileBuffer, filename) {
 
   const payload = [
     {
-      EntityType: 'Invoice',
+      EntityType: 'CreditCardTransaction',
       EntityKeyID: Number(transactionId),
       Description: name,
       File: {
@@ -398,7 +399,7 @@ export async function attachReceipt(transactionId, fileBuffer, filename) {
       },
     },
   ];
-  const { body, location } = await request(`/Invoices/${transactionId}/FileAttachments`, {
+  const { body, location } = await request(`/CreditCardTransactions/${transactionId}/FileAttachments`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
