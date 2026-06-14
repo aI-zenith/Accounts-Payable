@@ -29,7 +29,7 @@
           <div class="appbar__spacer"></div>
           <span class="appbar__crumb"><%= brand.company %> · <%= brand.product %></span>
         </header>
-        <main class="content">
+        <main class="content <%= (typeof active !== 'undefined' && active === 'tasks') ? 'content--flush' : '' %>">
           <%- include('partials/reminder-banner') %>
           <% if (typeof notice !== 'undefined' && notice) { %>
             <div class="notice" role="status"><%= notice %></div>

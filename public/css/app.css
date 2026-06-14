@@ -220,6 +220,12 @@ body.app {
   margin: 0 auto;
   padding: 30px 28px 64px;
 }
+/* Full-bleed app pages (Tasks) fill the whole work area — no centering cap. */
+.content--flush {
+  max-width: none;
+  margin: 0;
+  padding: 26px 30px 56px;
+}
 
 /* page title -> clean sans for a modern SaaS feel */
 .page-title {
