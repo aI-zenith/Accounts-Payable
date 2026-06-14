@@ -87,9 +87,9 @@ router.get(
   wrap(async (req, res) => {
     const seg = ['all', 'mine', 'unassigned'].includes(req.query.seg) ? req.query.seg : 'all';
     const q = req.query.q || '';
-    const tab = ['conversation', 'checklist', 'files', 'activity'].includes(req.query.tab)
+    const tab = ['overview', 'comments', 'checklist', 'files', 'activity'].includes(req.query.tab)
       ? req.query.tab
-      : 'conversation';
+      : 'overview';
     const groups = await Tasks.groupInbox(req.user, { seg, q });
     const flat = [...groups.overdue, ...groups.today, ...groups.upcoming, ...groups.completed];
     const selId = req.query.sel ? Number(req.query.sel) : flat[0] ? flat[0].id : null;
@@ -124,9 +124,9 @@ router.get(
   '/table',
   wrap(async (req, res) => {
     const filters = parseFilters(req.query);
-    const tab = ['conversation', 'checklist', 'files', 'activity'].includes(req.query.tab)
+    const tab = ['overview', 'comments', 'checklist', 'files', 'activity'].includes(req.query.tab)
       ? req.query.tab
-      : 'conversation';
+      : 'overview';
     const [tasks, ctx, saved] = await Promise.all([
       Tasks.listTasks(req.user, filters),
       formContext(),
@@ -185,9 +185,9 @@ router.get(
   '/board',
   wrap(async (req, res) => {
     const filters = parseFilters(req.query);
-    const tab = ['conversation', 'checklist', 'files', 'activity'].includes(req.query.tab)
+    const tab = ['overview', 'comments', 'checklist', 'files', 'activity'].includes(req.query.tab)
       ? req.query.tab
-      : 'conversation';
+      : 'overview';
     const tasks = await Tasks.listTasks(req.user, filters);
     const columns = Tasks.STATUSES.map((s) => ({ key: s, tasks: tasks.filter((t) => t.status === s) }));
     let task = null;

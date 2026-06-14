@@ -8,7 +8,7 @@
   const dueInfo = (t) => { if (!t.due_at) return { label: '—', cls: 'tdue-gray', plain: true }; const ms = new Date(t.due_at) - Date.now(); const day = 86400000; if (t.status !== 'done' && ms < 0) return { label: 'Overdue', cls: 'tdue-red' }; if (t.status !== 'done' && ms < day) return { label: 'Today', cls: 'tdue-red' }; if (t.status !== 'done' && ms < 3 * day) return { label: fmtD(t.due_at), cls: 'tdue-amber' }; return { label: fmtD(t.due_at), cls: 'tdue-gray' }; };
   // Active chip = open-only filter with no specific status selected.
   const statusChip = filters.openOnly && !filters.status ? 'active' : filters.status;
-  const rowUrl = (id) => '/tasks/table?' + (qs ? qs + '&' : '') + 'sel=' + id + '&tab=conversation';
+  const rowUrl = (id) => '/tasks/table?' + (qs ? qs + '&' : '') + 'sel=' + id + '&tab=overview';
   const SORTS = { due_at: 'Due date', priority: 'Priority', status: 'Status', title: 'Title', created_at: 'Created', updated_at: 'Updated' };
 %>
 

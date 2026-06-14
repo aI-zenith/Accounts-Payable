@@ -5,63 +5,109 @@
   const AVC = ['#2b5fd9', '#7a4dd1', '#0f9d8f', '#c2611f', '#c0398a', '#3a7a3a', '#b5791a', '#d6453d'];
   const avc = (n) => { let h = 0; for (const ch of String(n || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return AVC[h % AVC.length]; };
   const fmt = (d) => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  const fmtDay = (d) => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric' }) : '';
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  const dueInfo = (t) => { if (!t.due_at) return { label: 'No due date', cls: 'tdue-gray' }; const ms = new Date(t.due_at) - Date.now(); const day = 86400000; if (t.status !== 'done' && ms < 0) return { label: 'Overdue · ' + fmt(t.due_at), cls: 'tdue-red' }; if (ms < day) return { label: 'Today · ' + fmt(t.due_at), cls: 'tdue-red' }; if (ms < 3 * day) return { label: fmt(t.due_at), cls: 'tdue-amber' }; return { label: fmt(t.due_at), cls: 'tdue-gray' }; };
+  const dueInfo = (t) => { if (!t.due_at) return { label: 'No due date', cls: 'tdue-gray' }; const ms = new Date(t.due_at) - Date.now(); const day = 86400000; if (t.status !== 'done' && ms < 0) return { label: 'Overdue · ' + fmtDay(t.due_at), cls: 'tdue-red' }; if (t.status !== 'done' && ms < day) return { label: 'Today · ' + fmtDay(t.due_at), cls: 'tdue-red' }; if (t.status !== 'done' && ms < 3 * day) return { label: fmtDay(t.due_at), cls: 'tdue-amber' }; return { label: fmtDay(t.due_at), cls: 'tdue-gray' }; };
   const tid = 'TSK-' + (1000 + task.id);
   const back = (typeof backUrl !== 'undefined' && backUrl) ? backUrl : '/tasks?sel=' + task.id;
   const du = dueInfo(task);
   const subDone = (task.subtasks || []).filter((s) => s.done).length;
   const subPct = task.subtasks && task.subtasks.length ? Math.round((subDone / task.subtasks.length) * 100) : 0;
   const tabUrl = (t) => back + '&tab=' + t;
+  const recurLabel = (() => { if (!task.recurrence) return 'Does not repeat'; const r = typeof task.recurrence === 'object' ? task.recurrence : (() => { try { return JSON.parse(task.recurrence); } catch (e) { return null; } })(); if (!r) return 'Does not repeat'; return 'Every ' + (r.interval > 1 ? r.interval + ' ' : '') + r.freq + (r.interval > 1 ? 's' : ''); })();
+  const costLabel = task.estimated_cost_cents != null ? '$' + (task.estimated_cost_cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '—';
+  const propUnit = (task.link_type === 'property' || task.link_type === 'unit') && task.link_name ? task.link_name : '—';
+  const linkedRec = task.link_name ? (task.link_type.charAt(0).toUpperCase() + task.link_type.slice(1) + ' · ' + task.link_name) : '—';
+  const tags = Array.isArray(task.tags) ? task.tags : [];
+  const watchers = task.watchers || [];
 %>
 <div class="tkd-head">
   <div class="tkd-crumb">
     <span class="mono" style="font-size:11.5px;color:#7a8294"><%= tid %></span>
     <% if (task.category) { %><span class="tkd-cat"><%= task.category %></span><% } %>
     <div style="flex:1"></div>
-    <a class="btng" href="/tasks/<%= task.id %>/edit">Edit</a>
-    <form method="post" action="/tasks/<%= task.id %>/status" class="inline"><input type="hidden" name="status" value="done" /><input type="hidden" name="back" value="<%= back %>" /><button class="btnp" type="submit" style="padding:8px 13px">✓ Mark done</button></form>
+    <a class="btng" href="/tasks/<%= task.id %>/edit"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-right:5px"><path d="M11 2.5l2.5 2.5M3 11l8-8 2.5 2.5-8 8H3z" stroke-linejoin="round"/></svg>Edit</a>
+    <details class="tkd-more">
+      <summary class="tkd-morebtn" title="More">···</summary>
+      <div class="tkmenu" style="right:0;top:38px;left:auto">
+        <form method="post" action="/tasks/<%= task.id %>/status"><input type="hidden" name="status" value="<%= task.status === 'done' ? 'open' : 'done' %>" /><input type="hidden" name="back" value="<%= back %>" /><button class="tkmenu__opt" type="submit" style="width:100%;background:none;border:none;text-align:left;font:inherit;cursor:pointer"><%= task.status === 'done' ? 'Reopen task' : 'Mark as done' %></button></form>
+        <form method="post" action="/tasks/<%= task.id %>/snooze"><input type="hidden" name="back" value="<%= back %>" /><button class="tkmenu__opt" type="submit" style="width:100%;background:none;border:none;text-align:left;font:inherit;cursor:pointer">Snooze 7 days</button></form>
+        <form method="post" action="/tasks/<%= task.id %>/delete" onsubmit="return confirm('Delete this task?')"><button class="tkmenu__opt" type="submit" style="width:100%;background:none;border:none;text-align:left;font:inherit;cursor:pointer;color:#c0392b">Delete task</button></form>
+      </div>
+    </details>
   </div>
   <h2 class="tkd-title">
-    <form method="post" action="/tasks/<%= task.id %>/status" class="inline"><input type="hidden" name="status" value="<%= task.status === 'done' ? 'open' : 'done' %>" /><input type="hidden" name="back" value="<%= back %>" /><button class="tkd-check" type="submit" title="Toggle done"><% if (task.status === 'done') { %><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#2f9e6e" stroke-width="2.4"><path d="M3.5 8.5l3 3 6-7" stroke-linecap="round" stroke-linejoin="round"/></svg><% } %></button></form>
+    <form method="post" action="/tasks/<%= task.id %>/status" class="inline"><input type="hidden" name="status" value="<%= task.status === 'done' ? 'open' : 'done' %>" /><input type="hidden" name="back" value="<%= back %>" /><button class="tkd-check <%= task.status === 'done' ? 'on' : '' %>" type="submit" title="Toggle done"><% if (task.status === 'done') { %><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.4"><path d="M3.5 8.5l3 3 6-7" stroke-linecap="round" stroke-linejoin="round"/></svg><% } %></button></form>
     <span><%= task.title %></span>
   </h2>
   <div class="tkd-pillrow">
     <form method="post" action="/tasks/<%= task.id %>/status" class="inline">
       <input type="hidden" name="back" value="<%= back %>" />
-      <select class="in" name="status" data-autosubmit style="width:auto;padding:6px 10px;font-size:12px;font-weight:600">
+      <select class="tps tps-<%= task.status %> tkd-statussel" name="status" data-autosubmit>
         <% Object.entries(STAT).forEach(([k, v]) => { %><option value="<%= k %>" <%= task.status === k ? 'selected' : '' %>><%= v %></option><% }) %>
       </select>
     </form>
-    <span class="tpr tpr-<%= task.priority %>"><%= PRIO[task.priority] %></span>
+    <span class="tpr tpr-<%= task.priority %>"><%= PRIO[task.priority] %> priority</span>
     <span class="tdue <%= du.cls %>">Due <%= du.label %></span>
-    <% (task.assignees || []).slice(0, 3).forEach((a) => { %>
-      <span style="display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:500;color:#475067;border:1px solid #e6e8ec;padding:4px 11px 4px 5px;border-radius:8px;"><span class="av" style="width:22px;height:22px;background:<%= avc(a.name) %>;font-size:9.5px"><%= initials(a.name) %></span><%= a.name %></span>
-    <% }) %>
   </div>
 </div>
 
 <div class="tkd-tabs">
-  <a class="tkd-tab <%= tab === 'conversation' ? 'on' : '' %>" href="<%= tabUrl('conversation') %>">Conversation<% if (task.comments.length) { %><b><%= task.comments.length %></b><% } %></a>
+  <a class="tkd-tab <%= tab === 'overview' ? 'on' : '' %>" href="<%= tabUrl('overview') %>">Overview</a>
   <a class="tkd-tab <%= tab === 'checklist' ? 'on' : '' %>" href="<%= tabUrl('checklist') %>">Checklist<% if (task.subtasks.length) { %><b><%= subDone %>/<%= task.subtasks.length %></b><% } %></a>
+  <a class="tkd-tab <%= tab === 'comments' || tab === 'conversation' ? 'on' : '' %>" href="<%= tabUrl('comments') %>">Comments<% if (task.comments.length) { %><b><%= task.comments.length %></b><% } %></a>
   <a class="tkd-tab <%= tab === 'files' ? 'on' : '' %>" href="<%= tabUrl('files') %>">Files<% if (task.attachments.length) { %><b><%= task.attachments.length %></b><% } %></a>
   <a class="tkd-tab <%= tab === 'activity' ? 'on' : '' %>" href="<%= tabUrl('activity') %>">Activity</a>
 </div>
 
 <div class="tkd-body">
-  <% if (tab === 'conversation') { %>
-    <% if (task.description) { %><div class="tkd-desc"><%= task.description %></div><% } %>
-    <div class="tkd-thread">
-      <% task.comments.forEach((c) => { const mine = c.user_id === currentUser.id; const who = c.name || c.email || 'Someone'; const body = esc(c.body).replace(/@([A-Za-z][\w-]*)/g, '<b class="men">@$1</b>'); %>
-        <div class="tkmsg <%= mine ? 'me' : '' %>">
-          <span class="av" style="width:33px;height:33px;background:<%= avc(who) %>;font-size:11px"><%= initials(who) %></span>
-          <div class="tkmsg__b">
-            <div class="tkmsg__meta"><strong style="color:#11151c"><%= who %></strong><span><%= fmt(c.created_at) %></span></div>
-            <div class="tkmsg__bub"><%- body %></div>
-          </div>
+  <% if (tab === 'overview') { %>
+    <% if (task.description) { %><p class="tkd-od"><%= task.description %></p><% } %>
+
+    <div class="tkd-grid">
+      <div class="tkd-gcell">
+        <div class="lbl">Assignee</div>
+        <div class="tkd-gval">
+          <% if ((task.assignees || []).length) { %>
+            <% task.assignees.forEach((a) => { %><span class="tkd-person"><span class="av" style="width:22px;height:22px;background:<%= avc(a.name) %>;font-size:9.5px"><%= initials(a.name) %></span><%= a.name %></span><% }) %>
+          <% } else { %><span style="color:#9aa0ab">Unassigned</span><% } %>
         </div>
-      <% }) %>
-      <% if (!task.comments.length) { %><p class="lbl" style="text-transform:none;font-weight:500;color:#9aa0ab">No comments yet — start the conversation below.</p><% } %>
+      </div>
+      <div class="tkd-gcell">
+        <div class="lbl">Property / Unit</div>
+        <div class="tkd-gval"><%= propUnit %></div>
+      </div>
+      <div class="tkd-gcell">
+        <div class="lbl">Linked record</div>
+        <div class="tkd-gval"><%= linkedRec %></div>
+      </div>
+      <div class="tkd-gcell">
+        <div class="lbl">Category</div>
+        <div class="tkd-gval"><%= task.category || '—' %></div>
+      </div>
+      <div class="tkd-gcell">
+        <div class="lbl">Recurring</div>
+        <div class="tkd-gval"><%= recurLabel %></div>
+      </div>
+      <div class="tkd-gcell">
+        <div class="lbl">Est. cost</div>
+        <div class="tkd-gval"><%= costLabel %></div>
+      </div>
+    </div>
+
+    <% if (tags.length) { %>
+      <div class="tkd-sec">
+        <div class="lbl">Tags</div>
+        <div class="tkd-tags"><% tags.forEach((t) => { %><span class="tkd-tag"># <%= t %></span><% }) %></div>
+      </div>
+    <% } %>
+
+    <div class="tkd-sec">
+      <div class="lbl">Watchers</div>
+      <div class="tkd-watchers">
+        <% if (watchers.length) { watchers.forEach((w) => { %><span class="tkd-person tkd-person--w"><span class="av" style="width:22px;height:22px;background:<%= avc(w.name) %>;font-size:9.5px"><%= initials(w.name) %></span><%= w.name %></span><% }) } %>
+        <a class="tkd-wadd" href="/tasks/<%= task.id %>/edit" title="Manage watchers">+</a>
+      </div>
     </div>
 
   <% } else if (tab === 'checklist') { %>
@@ -78,6 +124,20 @@
         <input class="in" name="label" placeholder="Add a checklist item…" required style="font-size:13px" />
         <button class="btng" type="submit">Add</button>
       </form>
+    </div>
+
+  <% } else if (tab === 'comments' || tab === 'conversation') { %>
+    <div class="tkd-thread">
+      <% task.comments.forEach((c) => { const mine = c.user_id === currentUser.id; const who = c.name || c.email || 'Someone'; const body = esc(c.body).replace(/@([A-Za-z][\w-]*)/g, '<b class="men">@$1</b>'); %>
+        <div class="tkmsg <%= mine ? 'me' : '' %>">
+          <span class="av" style="width:33px;height:33px;background:<%= avc(who) %>;font-size:11px"><%= initials(who) %></span>
+          <div class="tkmsg__b">
+            <div class="tkmsg__meta"><strong style="color:#11151c"><%= who %></strong><span><%= fmt(c.created_at) %></span></div>
+            <div class="tkmsg__bub"><%- body %></div>
+          </div>
+        </div>
+      <% }) %>
+      <% if (!task.comments.length) { %><p class="lbl" style="text-transform:none;font-weight:500;color:#9aa0ab">No comments yet — start the conversation below.</p><% } %>
     </div>
 
   <% } else if (tab === 'files') { %>
@@ -106,8 +166,8 @@
   <% } %>
 </div>
 
-<% if (tab === 'conversation') { %>
+<% if (tab === 'comments' || tab === 'conversation') { %>
   <div style="border-top:1px solid #eceef1;padding:14px 26px;background:#fff">
-    <%- include('comment-composer', { task, currentUser, sendLabel: 'Send', back: back + '&tab=conversation' }) %>
+    <%- include('comment-composer', { task, currentUser, sendLabel: 'Send', back: back + '&tab=comments' }) %>
   </div>
 <% } %>
