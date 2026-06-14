@@ -15,16 +15,43 @@
     deferredInstall = e;
     document.documentElement.classList.add('pwa-installable');
   });
+  // ---- Mobile "install the app" banner (with Don't-show-again) ----
+  const INSTALL_DISMISS = 'zg_install_dismissed';
+  const hideInstallBar = () => { const b = document.getElementById('installBar'); if (b) b.hidden = true; };
+  const maybeShowInstallBar = () => {
+    const bar = document.getElementById('installBar');
+    if (!bar || isStandalone()) return;
+    try { if (localStorage.getItem(INSTALL_DISMISS) === '1') return; } catch (e) {}
+    const isMobile = window.matchMedia('(max-width: 768px)').matches || window.matchMedia('(pointer: coarse)').matches;
+    if (!isMobile) return;
+    setTimeout(() => {
+      if (isStandalone()) return;
+      try { if (localStorage.getItem(INSTALL_DISMISS) === '1') return; } catch (e) {}
+      bar.hidden = false;
+    }, 1400);
+  };
+  if (document.readyState !== 'loading') maybeShowInstallBar();
+  else document.addEventListener('DOMContentLoaded', maybeShowInstallBar);
+
   window.addEventListener('appinstalled', () => {
     deferredInstall = null;
     document.documentElement.classList.remove('pwa-installable');
     document.documentElement.classList.add('pwa-installed');
+    hideInstallBar();
+  });
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('[data-install-dismiss]')) {
+      try { localStorage.setItem(INSTALL_DISMISS, '1'); } catch (err) {}
+      hideInstallBar();
+    } else if (e.target.closest('[data-install-close]')) {
+      hideInstallBar();
+    }
   });
   document.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-install-app]');
     if (!btn) return;
     e.preventDefault();
-    const note = document.querySelector('[data-install-note]');
+    const note = (btn.closest('.installbar, .install-card') || document).querySelector('[data-install-note]');
     if (deferredInstall) {
       deferredInstall.prompt();
       const { outcome } = await deferredInstall.userChoice;
