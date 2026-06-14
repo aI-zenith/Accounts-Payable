@@ -4,7 +4,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { query } from '../db/pool.js';
 import { extractAndStore } from '../services/ingest.js';
-import { pushInvoiceToRentManager } from '../services/pushInvoice.js';
+import { pushInvoice } from '../services/pushInvoice.js';
+import { listExpenseGLAccounts } from '../services/rmClient.js';
 
 const router = Router();
 
@@ -82,32 +83,38 @@ router.get(
 );
 
 // --- POST /upload ----------------------------------------------------------
+// Accepts one OR many PDFs (bulk). Each is stored and extraction kicked off.
 router.post(
   '/upload',
   (req, res, next) =>
-    upload.single('invoice')(req, res, (err) => {
+    upload.array('invoices', 50)(req, res, (err) => {
       if (err) {
         return res.redirect('/?notice=' + encodeURIComponent(err.message));
       }
       next();
     }),
   wrap(async (req, res) => {
-    if (!req.file) {
-      return res.redirect('/?notice=' + encodeURIComponent('Please choose a PDF to upload.'));
+    const files = req.files || [];
+    if (files.length === 0) {
+      return res.redirect('/?notice=' + encodeURIComponent('Please choose one or more PDFs to upload.'));
     }
-    const { rows } = await query(
-      `INSERT INTO invoices (original_name, status, file_data, mime_type)
-       VALUES ($1, 'pending', $2, $3) RETURNING id`,
-      [req.file.originalname, req.file.buffer, req.file.mimetype]
-    );
-    const id = rows[0].id;
+    for (const file of files) {
+      const { rows } = await query(
+        `INSERT INTO invoices (original_name, status, file_data, mime_type)
+         VALUES ($1, 'pending', $2, $3) RETURNING id`,
+        [file.originalname, file.buffer, file.mimetype]
+      );
+      // Kick off extraction without blocking the response.
+      extractAndStore(rows[0].id, file.buffer).catch((err) =>
+        console.error(`[invoices] extraction failed for #${rows[0].id}:`, err.message)
+      );
+    }
 
-    // Kick off extraction without blocking the response.
-    extractAndStore(id, req.file.buffer).catch((err) =>
-      console.error(`[invoices] extraction failed for #${id}:`, err.message)
-    );
-
-    res.redirect('/?notice=' + encodeURIComponent(`Uploaded "${req.file.originalname}" — extracting…`));
+    const msg =
+      files.length === 1
+        ? `Uploaded "${files[0].originalname}" — extracting…`
+        : `Uploaded ${files.length} receipts — extracting…`;
+    res.redirect('/?notice=' + encodeURIComponent(msg));
   })
 );
 
@@ -159,11 +166,44 @@ router.get(
   '/invoice/:id',
   loadInvoice,
   wrap(async (req, res) => {
+    const d = req.invoice.extracted || {};
+
+    // Expense accounts for the type-to-search picker (best-effort).
+    let glAccounts = [];
+    try {
+      glAccounts = (await listExpenseGLAccounts()).map((a) => ({
+        id: String(a.GLAccountID),
+        name: a.Name,
+        ref: a.Reference,
+      }));
+    } catch {
+      glAccounts = [];
+    }
+    const glMap = {};
+    for (const a of glAccounts) glMap[a.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()] = a.id;
+
+    // Default selection: the AI suggestion, else the configured default.
+    let defaultGlId = d.expense_account_id || '';
+    let defaultGlName = d.expense_account_name || d.expense_account || '';
+    if (!defaultGlId) {
+      const { rows } = await query(
+        'SELECT default_gl_account_id, default_gl_account_name FROM settings WHERE id = 1'
+      );
+      if (rows[0]) {
+        defaultGlId = rows[0].default_gl_account_id || '';
+        defaultGlName = defaultGlName || rows[0].default_gl_account_name || '';
+      }
+    }
+
     res.render('review', {
       title: `Review · ${req.invoice.original_name}`,
       active: 'dashboard',
       invoice: req.invoice,
-      data: req.invoice.extracted || {},
+      data: d,
+      glAccounts,
+      glMap,
+      defaultGlId,
+      defaultGlName,
       notice: req.query.notice || null,
     });
   })
@@ -202,6 +242,10 @@ router.post(
       total: normalizeNumber(b.total),
       property_reference: b.property_reference || null,
       credit_card: b.credit_card || null,
+      card_last4: b.card_last4 ? String(b.card_last4).replace(/\D/g, '').slice(-4) : null,
+      expense_account: b.expense_account || null,
+      expense_account_id: b.expense_account_id || null,
+      expense_account_name: b.expense_account || null,
       currency: b.currency || null,
       line_items: lineItems,
     };
@@ -233,17 +277,35 @@ router.post(
 );
 
 // --- POST /invoice/:id/push -----------------------------------------------
-// Pushes the invoice to Rent Manager as a Credit Card Transaction. The matching
-// + create + status transition all live in pushInvoiceToRentManager so the
-// manual button and the email auto-push behave identically.
+// Pushes the invoice to Rent Manager as a Credit Card Transaction. The matching,
+// allocation, create, attach, and status transition all live in pushInvoice()
+// so the manual button, "Push all", and email auto-push behave identically.
 router.post(
   '/invoice/:id/push',
   loadInvoice,
   wrap(async (req, res) => {
-    const result = await pushInvoiceToRentManager(req.invoice);
-    return res.redirect(
-      `/invoice/${req.invoice.id}?notice=` + encodeURIComponent(result.message)
+    const result = await pushInvoice(req.invoice);
+    const prefix = result.ok ? 'Pushed to Rent Manager — ' : '';
+    return res.redirect(`/invoice/${req.invoice.id}?notice=` + encodeURIComponent(prefix + result.message));
+  })
+);
+
+// --- POST /push-all : push every invoice that is ready ---------------------
+router.post(
+  '/push-all',
+  wrap(async (req, res) => {
+    const { rows } = await query(
+      "SELECT * FROM invoices WHERE status IN ('extracted', 'confirmed', 'needs_review') ORDER BY created_at ASC"
     );
+    let pushed = 0;
+    let flagged = 0;
+    for (const inv of rows) {
+      const r = await pushInvoice(inv);
+      if (r.ok) pushed += 1;
+      else flagged += 1;
+    }
+    const msg = `Push all: ${pushed} pushed, ${flagged} need review${rows.length === 0 ? ' (nothing ready)' : ''}.`;
+    return res.redirect('/?notice=' + encodeURIComponent(msg));
   })
 );
 

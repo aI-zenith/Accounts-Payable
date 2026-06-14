@@ -1,22 +1,25 @@
 // Push a confirmed/extracted invoice to Rent Manager as a Credit Card
-// Transaction. Shared by the manual "Push to Rent Manager" button and the email
-// auto-push path so both resolve records the same way and flag the same review
-// cases. The function owns the invoice row's terminal status transition:
-//   success      -> 'pushed'   (+ rm_project_id = the new transaction id)
-//   any mismatch -> 'needs_review' (+ error_msg = why)
+// Transaction, then attach the receipt PDF. Shared by the manual "Push" button,
+// the "Push all" action, and the email auto-push path so every entry point
+// resolves records, allocates, and attaches identically.
 //
-// It NEVER throws for a business reason (unmatched card/vendor/property or an RM
-// error) — those become a 'needs_review' result so callers can run unattended.
+// Property assignment (per requirement): the property is identified PRIMARILY by
+// the credit card used (each RM card belongs to a property). The invoice's
+// job/property reference is then a SECOND-STEP verification — it must match that
+// property or one of its units. A card with no linked property falls back to a
+// name match on the job reference. Anything unmatched is flagged needs_review
+// rather than guessed.
 
 import { query } from '../db/pool.js';
 import {
   findCreditCardByName,
   findVendorByName,
   createVendor,
+  findPropertyByName,
   findPropertyForCreditCard,
   jobMatchesPropertyOrUnit,
   createCreditCardTransaction,
-  attachInvoiceFile,
+  attachReceipt,
 } from './rmClient.js';
 
 function normalizeDate(v) {
@@ -29,132 +32,161 @@ function normalizeNumber(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-// Build a short memo from the line items (or invoice number).
-function memoFrom(d) {
-  const items = Array.isArray(d.line_items) ? d.line_items : [];
-  const desc = items.map((li) => li.description).filter(Boolean).slice(0, 5).join('; ');
-  if (desc) return desc.slice(0, 250);
-  return d.invoice_number ? `Invoice ${d.invoice_number}` : '';
-}
-
 // Map the extracted invoice + resolved RM records into the POST body.
-// Field names are CONFIRMED from the live CreditCardTransactions schema:
-//   vendor -> AccountID + AccountType:"Vendor"; date -> TransactionDate;
-//   memo -> Comment. The property/GL allocation is a child structure (not on the
-//   header) and is added once its shape is confirmed via discovery.
-function buildCreditCardTransaction({ card, vendor, property, d }) {
+// Per the CreditCardTransactionModel schema:
+//   - vendor -> AccountID + AccountType:"Vendor"
+//   - Amount is READ ONLY (sum of the details), so it goes on the detail line
+//   - CreditCardTransactionDetails is REQUIRED on create — it carries the
+//     property/expense allocation (the grey row in the RM form).
+function buildCreditCardTransaction({ card, vendor, property, glAccountId, d }) {
+  const amount = normalizeNumber(d.total) ?? 0;
+  const detail = {
+    PropertyID: property.PropertyID ?? property.ID,
+    GLAccountID: glAccountId,
+    Amount: amount,
+  };
   return {
     CreditCardID: card.CreditCardID ?? card.ID,
     AccountID: vendor.VendorID ?? vendor.ID,
     AccountType: 'Vendor',
     TransactionDate: normalizeDate(d.invoice_date) || new Date().toISOString().slice(0, 10),
     Reference: d.invoice_number || '',
-    Comment: memoFrom(d),
-    Amount: normalizeNumber(d.total) ?? 0,
-    // "Charge" is the transaction direction; RM records TransactionType "CreditCard".
-    Type: 'Charge',
-    // TODO(property): attach `property` (PropertyID ${property?.PropertyID}) via the
-    // confirmed child allocation structure once discovery returns it.
+    CreditCardTransactionDetails: [detail],
   };
 }
 
+// Resolve the RM credit card: prefer the configured last-4 mapping, then fall
+// back to a fuzzy match on the card nickname. Returns { CreditCardID } or null.
+async function resolveCard(d) {
+  const last4 = d.card_last4 ? String(d.card_last4).replace(/\D/g, '').slice(-4) : null;
+  if (last4) {
+    const { rows } = await query('SELECT rm_card_id FROM card_mappings WHERE last4 = $1', [last4]);
+    if (rows[0]) return { CreditCardID: rows[0].rm_card_id };
+  }
+  if (d.credit_card) {
+    return findCreditCardByName(d.credit_card);
+  }
+  return null;
+}
+
+// Attach the stored receipt PDF to a transaction. Returns a short status note.
+async function doAttach(inv, txnId) {
+  if (txnId == null) return ' (could not read the transaction id, so the receipt was not attached)';
+  try {
+    const { rows: fr } = await query('SELECT file_data FROM invoices WHERE id = $1', [inv.id]);
+    const fileData = fr[0] && fr[0].file_data;
+    if (!fileData) return '';
+    const attId = await attachReceipt(txnId, fileData, inv.original_name);
+    await query('UPDATE invoices SET rm_attachment_id = $2 WHERE id = $1', [
+      inv.id,
+      attId != null ? String(attId) : null,
+    ]);
+    return ' Receipt attached.';
+  } catch (err) {
+    console.error(`[push] attach failed for #${inv.id}:`, err.message);
+    return ` (receipt attach failed: ${err.message.slice(0, 160)})`;
+  }
+}
+
 /**
- * Resolve records and create the Rent Manager credit card transaction.
- * @param {{ id:number, extracted:object }} inv  the invoice row (needs id + extracted)
- * @returns {Promise<{ ok:boolean, status:'pushed'|'needs_review', txnId?:any, message:string }>}
+ * Core push logic. Resolves records, creates the transaction, attaches the
+ * receipt, and owns the row's terminal status transition. Never throws for a
+ * business reason — unmatched records / RM errors become a needs_review result
+ * so callers (button, push-all, email auto-push) can run unattended.
+ *
+ * @param {object} inv  the invoice row (needs id, extracted, original_name,
+ *                      rm_project_id, rm_attachment_id)
+ * @returns {Promise<{ ok:boolean, status:string, message:string }>}
  */
-export async function pushInvoiceToRentManager(inv) {
+export async function pushInvoice(inv) {
   const d = inv.extracted || {};
 
-  // Record a manual-review state and return it (no silent failures).
-  const flag = async (msg) => {
-    await query(
-      "UPDATE invoices SET status = 'needs_review', error_msg = $2, updated_at = now() WHERE id = $1",
-      [inv.id, msg]
-    ).catch((e) => console.error('[push] could not record review state:', e.message));
-    return { ok: false, status: 'needs_review', message: msg };
-  };
+  // Idempotency: if a transaction already exists for this invoice, never create
+  // a duplicate — just (re)attach the receipt if it isn't attached yet.
+  if (inv.rm_project_id) {
+    if (inv.rm_attachment_id) {
+      return { ok: true, status: 'pushed', message: `Already pushed (transaction ${inv.rm_project_id}, receipt attached).` };
+    }
+    const note = await doAttach(inv, Number(inv.rm_project_id));
+    return { ok: true, status: 'pushed', message: `Already pushed (transaction ${inv.rm_project_id}).${note}` };
+  }
+
+  const setStatus = (status, msg) =>
+    query('UPDATE invoices SET status = $2, error_msg = $3, updated_at = now() WHERE id = $1', [
+      inv.id,
+      status,
+      status === 'pushed' ? null : msg,
+    ]);
 
   try {
-    // 1) Credit card — required; a missing/unmatched card is a hard stop. The
-    //    card is also how we identify the property (step 3), so it must resolve.
-    if (!d.credit_card) return flag('Needs review: no credit card found on the invoice.');
-    const card = await findCreditCardByName(d.credit_card);
-    if (!card) return flag(`Credit card not found: ${d.credit_card}`);
+    // 1) Credit card — required (and the key to the property in step 3).
+    const card = await resolveCard(d);
+    if (!card) {
+      const which = d.card_last4 || d.credit_card || '(none)';
+      const msg = `Credit card not found: ${which}`;
+      await setStatus('needs_review', msg);
+      return { ok: false, status: 'needs_review', message: msg };
+    }
 
-    // 2) Vendor — match by merchant name, create if it doesn't exist.
+    // 2) Vendor — match by merchant name, create if missing.
     let vendor = d.vendor_name ? await findVendorByName(d.vendor_name) : null;
-    if (!vendor && d.vendor_name) {
-      vendor = await createVendor(d.vendor_name);
-    }
-    if (!vendor) return flag('Needs review: no vendor/merchant on the invoice.');
-
-    // 3) Property — PRIMARY: derive it from the credit card used. SECONDARY: the
-    //    invoice's job/property reference must verify against that property
-    //    (matching the property itself or one of its units). A failed/absent
-    //    verification is flagged for manual review rather than guessed.
-    const property = await findPropertyForCreditCard(card);
-    if (!property) {
-      return flag(`Needs review: credit card "${card.Name}" is not linked to a property in Rent Manager.`);
-    }
-    const jobRef = d.property_reference || '';
-    if (!jobRef) {
-      return flag(
-        `Needs review: no job/property reference on the invoice to verify against card property "${property.Name}".`
-      );
-    }
-    if (!(await jobMatchesPropertyOrUnit(property, jobRef))) {
-      return flag(
-        `Needs review: job "${jobRef}" does not match card property "${property.Name}" or any of its units.`
-      );
+    if (!vendor && d.vendor_name) vendor = await createVendor(d.vendor_name);
+    if (!vendor) {
+      const msg = 'Needs review: no vendor/merchant on the receipt.';
+      await setStatus('needs_review', msg);
+      return { ok: false, status: 'needs_review', message: msg };
     }
 
-    // 4) Create the transaction.
-    const payload = buildCreditCardTransaction({ card, vendor, property, d });
-    const txnId = await createCreditCardTransaction(payload);
-
-    // 5) Attach the original PDF to the created record. This is best-effort and
-    //    deliberately NON-FATAL: the transaction already exists, so a failed
-    //    attach must never flip the row to a state that would re-push (and thus
-    //    double-charge). We record the attachment id on success and surface a
-    //    note on failure so it can be retried by hand.
-    let attachmentNote = '';
-    try {
-      const { rows } = await query(
-        'SELECT file_data, original_name FROM invoices WHERE id = $1',
-        [inv.id]
-      );
-      const file = rows[0];
-      if (file?.file_data && txnId != null) {
-        const attachmentId = await attachInvoiceFile(txnId, {
-          filename: file.original_name || `invoice-${inv.id}.pdf`,
-          content: file.file_data,
-          description: d.invoice_number ? `Invoice ${d.invoice_number}` : 'Receipt',
-        });
-        await query('UPDATE invoices SET rm_attachment_id = $2 WHERE id = $1', [
-          inv.id,
-          attachmentId != null ? String(attachmentId) : null,
-        ]);
-      } else if (txnId == null) {
-        attachmentNote = ' (no transaction id returned, so the PDF was not attached)';
+    // 3) Property — PRIMARY: the credit card's linked property; SECONDARY: the
+    //    invoice's job/property reference must verify against it (the property
+    //    itself or one of its units). A card with no linked property falls back
+    //    to a name match on the job reference.
+    let property = await findPropertyForCreditCard(card);
+    if (property) {
+      const jobRef = d.property_reference || '';
+      if (!(await jobMatchesPropertyOrUnit(property, jobRef))) {
+        const msg = `Needs review: job "${jobRef}" does not match card property "${property.Name}" or any of its units.`;
+        await setStatus('needs_review', msg);
+        return { ok: false, status: 'needs_review', message: msg };
       }
-    } catch (err) {
-      console.error(`[push] attach failed for #${inv.id} (txn ${txnId}):`, err.message);
-      attachmentNote = ` (transaction created, but attaching the PDF failed: ${err.message})`;
+    } else {
+      property = d.property_reference ? await findPropertyByName(d.property_reference) : null;
+    }
+    if (!property) {
+      const msg = `Needs review: property/job not matched ("${d.property_reference || ''}").`;
+      await setStatus('needs_review', msg);
+      return { ok: false, status: 'needs_review', message: msg };
     }
 
+    // 4) Expense (GL) account — required by RM. Prefer the per-receipt choice,
+    //    then the configured default.
+    let glAccountId = d.expense_account_id || null;
+    if (!glAccountId) {
+      const { rows: sRows } = await query('SELECT default_gl_account_id FROM settings WHERE id = 1');
+      glAccountId = sRows[0] && sRows[0].default_gl_account_id;
+    }
+    if (!glAccountId) {
+      const msg = 'Needs review: choose a default expense account in Settings (Rent Manager requires a GL account).';
+      await setStatus('needs_review', msg);
+      return { ok: false, status: 'needs_review', message: msg };
+    }
+
+    // 5) Create the transaction.
+    const txnId = await createCreditCardTransaction(
+      buildCreditCardTransaction({ card, vendor, property, glAccountId, d })
+    );
     await query(
-      "UPDATE invoices SET status = 'pushed', rm_project_id = $2, updated_at = now() WHERE id = $1",
+      "UPDATE invoices SET status = 'pushed', rm_project_id = $2, error_msg = NULL, updated_at = now() WHERE id = $1",
       [inv.id, txnId != null ? String(txnId) : null]
     );
-    return {
-      ok: true,
-      status: 'pushed',
-      txnId,
-      message: `Pushed to Rent Manager — credit card transaction ${txnId ?? 'created'}.${attachmentNote}`,
-    };
+
+    // 6) Attach the receipt PDF — non-fatal: never undo a created transaction.
+    const attachNote = await doAttach(inv, txnId);
+    return { ok: true, status: 'pushed', message: `Credit card transaction ${txnId ?? 'created'}.${attachNote}` };
   } catch (err) {
-    console.error(`[push] failed for #${inv.id}:`, err.message);
-    return flag(`Push failed: ${err.message}`);
+    console.error(`[push] push failed for #${inv.id}:`, err.message);
+    const msg = `Push failed: ${err.message}`;
+    await setStatus('needs_review', msg);
+    return { ok: false, status: 'needs_review', message: msg };
   }
 }

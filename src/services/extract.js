@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getCredentials } from './credentials.js';
+import { listExpenseGLAccounts } from './rmClient.js';
 
 const MODEL = 'claude-opus-4-8';
 
@@ -21,6 +22,8 @@ Use exactly this schema and these keys:
   "total": number|null,
   "property_reference": string|null,
   "credit_card": string|null,
+  "card_last4": string|null,
+  "expense_account": string|null,
   "currency": string|null
 }
 
@@ -30,8 +33,16 @@ Rules:
 - Numbers must be plain JSON numbers (no currency symbols, no thousands separators).
 - If a value is not present on the invoice, use null (or [] for line_items).
 - "property_reference" is any property/unit/job identifier the invoice mentions.
-- "credit_card" is the card/account the purchase was charged to if shown (e.g.
-  a card nickname like "wood ave", or the last 4 digits) — else null.`;
+- "credit_card" is the card/account nickname or label if shown (e.g. "wood ave") — else null.
+- "card_last4" is the last 4 digits of the card/account number if shown anywhere
+  on the receipt (e.g. "ending in 6760", "XXXX6760", "************6760") — else null.
+- "property_reference" should prefer any PO number / Job name on the receipt.
+- "expense_account": when a list of allowed expense accounts is provided below,
+  pick the SINGLE best fit for these items/vendor and return its EXACT name from
+  the list. If no list is provided, use null.`;
+
+// Case/whitespace-insensitive name key for matching.
+const nameKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 // Build an Anthropic client from resolved credentials.
 async function getClient() {
@@ -63,6 +74,20 @@ export async function extractInvoice(pdfBuffer) {
   const client = await getClient();
   const base64 = pdfBuffer.toString('base64');
 
+  // Best-effort: fetch the real expense accounts so Claude can suggest one.
+  let glAccounts = [];
+  try {
+    glAccounts = await listExpenseGLAccounts();
+  } catch {
+    glAccounts = [];
+  }
+  const names = glAccounts.map((a) => a.Name).filter(Boolean);
+
+  const userText =
+    names.length > 0
+      ? `Extract this receipt into the required JSON object. For "expense_account", choose the single best-fitting account, using the EXACT name, strictly from this list:\n${names.join('\n')}`
+      : 'Extract this invoice into the required JSON object.';
+
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 4096,
@@ -71,18 +96,8 @@ export async function extractInvoice(pdfBuffer) {
       {
         role: 'user',
         content: [
-          {
-            type: 'document',
-            source: {
-              type: 'base64',
-              media_type: 'application/pdf',
-              data: base64,
-            },
-          },
-          {
-            type: 'text',
-            text: 'Extract this invoice into the required JSON object.',
-          },
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+          { type: 'text', text: userText },
         ],
       },
     ],
@@ -94,13 +109,26 @@ export async function extractInvoice(pdfBuffer) {
     .join('')
     .trim();
 
-  const cleaned = stripFences(rawText);
-
+  let parsed;
   try {
-    return JSON.parse(cleaned);
+    parsed = JSON.parse(stripFences(rawText));
   } catch (err) {
     const parseError = new Error(`Could not parse extraction JSON: ${err.message}`);
     parseError.raw = rawText;
     throw parseError;
   }
+
+  // Resolve the suggested account name to a GL account id (exact, then loose).
+  if (parsed.expense_account && glAccounts.length) {
+    const key = nameKey(parsed.expense_account);
+    const hit =
+      glAccounts.find((a) => nameKey(a.Name) === key) ||
+      glAccounts.find((a) => nameKey(a.Name).includes(key) || key.includes(nameKey(a.Name)));
+    if (hit) {
+      parsed.expense_account_id = String(hit.GLAccountID);
+      parsed.expense_account_name = hit.Name;
+    }
+  }
+
+  return parsed;
 }

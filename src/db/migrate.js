@@ -60,6 +60,47 @@ const STATEMENTS = [
   `ALTER TABLE settings ADD COLUMN IF NOT EXISTS imap_mailbox text`,
   `ALTER TABLE settings ADD COLUMN IF NOT EXISTS imap_allowed_senders text`,
   `ALTER TABLE settings ADD COLUMN IF NOT EXISTS email_auto_push boolean DEFAULT true`,
+
+  // Default expense (GL) account for the credit card transaction allocation.
+  `ALTER TABLE settings ADD COLUMN IF NOT EXISTS default_gl_account_id text`,
+  `ALTER TABLE settings ADD COLUMN IF NOT EXISTS default_gl_account_name text`,
+  // Seed "Maintenance Material" (GLAccountID 345) as the default if unset.
+  // Only fills a blank value, so a user's later choice is never overwritten.
+  `UPDATE settings SET default_gl_account_id = '345', default_gl_account_name = 'Maintenance Material'
+     WHERE id = 1 AND (default_gl_account_id IS NULL OR default_gl_account_id = '')`,
+
+  // Map a credit card's last-4 digits to a Rent Manager credit card id, so the
+  // push posts to the right card (e.g. 6760 -> "Chase ...7202").
+  `CREATE TABLE IF NOT EXISTS card_mappings (
+     id           serial PRIMARY KEY,
+     last4        text NOT NULL UNIQUE,
+     rm_card_id   text NOT NULL,
+     rm_card_name text,
+     created_at   timestamptz DEFAULT now()
+   )`,
+
+  // Statement reconciliation: uploaded statements and their parsed charges.
+  `CREATE TABLE IF NOT EXISTS statements (
+     id            serial PRIMARY KEY,
+     original_name text NOT NULL,
+     source_type   text,
+     charge_count  int DEFAULT 0,
+     created_at    timestamptz DEFAULT now()
+   )`,
+
+  `CREATE TABLE IF NOT EXISTS statement_charges (
+     id                serial PRIMARY KEY,
+     statement_id      int REFERENCES statements(id) ON DELETE CASCADE,
+     charge_date       date,
+     amount            numeric(12,2),
+     description       text,
+     last4             text,
+     matched_invoice_id int,
+     status            text NOT NULL DEFAULT 'missing',
+     created_at        timestamptz DEFAULT now()
+   )`,
+
+  `CREATE INDEX IF NOT EXISTS statement_charges_statement_idx ON statement_charges (statement_id)`,
 ];
 
 export async function runMigrations() {

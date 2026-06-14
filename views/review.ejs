@@ -66,10 +66,32 @@
           <input class="input" type="text" name="credit_card" value="<%= v(data.credit_card) %>" placeholder="e.g. wood ave" />
         </label>
         <label class="field field--narrow">
+          <span class="field__label">Card last 4</span>
+          <input class="input num" type="text" name="card_last4" value="<%= v(data.card_last4) %>" maxlength="4" placeholder="6760" />
+        </label>
+        <label class="field field--narrow">
           <span class="field__label">Currency</span>
           <input class="input" type="text" name="currency" value="<%= v(data.currency) %>" maxlength="8" />
         </label>
       </div>
+
+      <div class="fieldrow">
+        <label class="field">
+          <span class="field__label">Expense account <span class="field__hint" style="text-transform:none;font-weight:400;">(start typing to search)</span></span>
+          <input class="input" type="text" name="expense_account" id="expenseAccountInput"
+                 list="glAccountsList" value="<%= v(defaultGlName) %>" placeholder="Maintenance Material" autocomplete="off" />
+          <input type="hidden" name="expense_account_id" id="expenseAccountId" value="<%= v(defaultGlId) %>" />
+          <datalist id="glAccountsList">
+            <% (glAccounts || []).forEach((a) => { %>
+              <option value="<%= a.name %>"><%= a.ref ? a.ref : '' %></option>
+            <% }) %>
+          </datalist>
+          <% if (!glAccounts || !glAccounts.length) { %>
+            <span class="field__hint">Couldn't load accounts from Rent Manager — the default will be used.</span>
+          <% } %>
+        </label>
+      </div>
+      <script id="glMapData" type="application/json"><%- JSON.stringify(glMap || {}) %></script>
 
       <fieldset class="lineitems">
         <legend>Line items</legend>

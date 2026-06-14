@@ -20,7 +20,7 @@ import { simpleParser } from 'mailparser';
 import { query } from '../db/pool.js';
 import { getCredentials } from './credentials.js';
 import { extractAndStore } from './ingest.js';
-import { pushInvoiceToRentManager } from './pushInvoice.js';
+import { pushInvoice } from './pushInvoice.js';
 
 const DEFAULT_INTERVAL_MS = 60 * 1000;
 
@@ -82,9 +82,16 @@ async function processMessage(client, uid, source, cfg) {
     console.log(`[email] ingested "${filename}" from ${from || 'unknown'} as invoice #${id}.`);
 
     try {
-      const inv = await extractAndStore(id, att.content);
+      const { extracted } = await extractAndStore(id, att.content);
       if (cfg.autoPush) {
-        const result = await pushInvoiceToRentManager({ id, extracted: inv.extracted });
+        // Fresh row: no prior transaction/attachment yet.
+        const result = await pushInvoice({
+          id,
+          extracted,
+          original_name: filename,
+          rm_project_id: null,
+          rm_attachment_id: null,
+        });
         console.log(`[email] invoice #${id}: ${result.message}`);
       } else {
         console.log(`[email] invoice #${id} extracted — waiting for manual review.`);

@@ -21,17 +21,22 @@
   }[s] || 'pill--pending');
 %>
 
-<section class="page-head">
-  <h1 class="page-title">Invoices</h1>
-  <p class="page-sub">Upload vendor invoices, review the extraction, and push to Rent Manager.</p>
+<section class="page-head page-head--row">
+  <div>
+    <h1 class="page-title">Invoices</h1>
+    <p class="page-sub">Upload vendor receipts, review the extraction, and push to Rent Manager.</p>
+  </div>
+  <form action="/push-all" method="post" onsubmit="return confirm('Push every ready receipt (extracted / confirmed / needs review) to Rent Manager?');">
+    <button type="submit" class="btn btn--ghost">Push all ready</button>
+  </form>
 </section>
 
 <form class="dropzone" id="dropzone" action="/upload" method="post" enctype="multipart/form-data">
-  <input type="file" name="invoice" id="fileInput" accept="application/pdf" hidden />
+  <input type="file" name="invoices" id="fileInput" accept="application/pdf" multiple hidden />
   <div class="dropzone__inner" id="dropzoneInner">
     <div class="dropzone__icon" aria-hidden="true">＋</div>
-    <p class="dropzone__lead">Drop an invoice PDF, or <button type="button" class="linkbtn" id="browseBtn">browse</button>.</p>
-    <p class="dropzone__hint">PDF only · up to 15&nbsp;MB</p>
+    <p class="dropzone__lead">Drop receipt PDFs, or <button type="button" class="linkbtn" id="browseBtn">browse</button>.</p>
+    <p class="dropzone__hint">PDF only · up to 15&nbsp;MB each · add several at once</p>
     <p class="dropzone__file" id="chosenFile" hidden></p>
   </div>
   <div class="dropzone__actions" id="dropzoneActions" hidden>

@@ -3,7 +3,13 @@ import Anthropic from '@anthropic-ai/sdk';
 import { query } from '../db/pool.js';
 import { encrypt, decrypt, mask } from '../services/crypto.js';
 import { getCredentials } from '../services/credentials.js';
-import { authenticate, _resetTokenCache, request } from '../services/rmClient.js';
+import {
+  authenticate,
+  _resetTokenCache,
+  request,
+  listCreditCards,
+  listExpenseGLAccounts,
+} from '../services/rmClient.js';
 import { testInbox } from '../services/emailPoller.js';
 
 const router = Router();
@@ -14,6 +20,7 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 async function loadSettingsView() {
   const { rows } = await query(
     `SELECT rm_subdomain, rm_username, rm_password, anthropic_api_key,
+            default_gl_account_id, default_gl_account_name,
             imap_host, imap_port, imap_user, imap_password, imap_mailbox,
             imap_allowed_senders, email_auto_push
        FROM settings WHERE id = 1`
@@ -43,6 +50,8 @@ async function loadSettingsView() {
     has_rm_username: Boolean(rmUser),
     has_rm_password: Boolean(rmPass),
     has_anthropic: Boolean(claudeKey),
+    default_gl_account_id: row.default_gl_account_id || '',
+    default_gl_account_name: row.default_gl_account_name || '',
     // Email inbox (IMAP). Host/port/user/mailbox/senders are plain; password masked.
     imap_host: row.imap_host || '',
     imap_port: row.imap_port || 993,
@@ -61,12 +70,84 @@ router.get(
   '/settings',
   wrap(async (req, res) => {
     const settings = await loadSettingsView();
+
+    // Saved last-4 -> RM card mappings.
+    const { rows: cardMappings } = await query(
+      'SELECT id, last4, rm_card_id, rm_card_name FROM card_mappings ORDER BY last4'
+    );
+
+    // Live lists from RM for the pickers (best-effort).
+    let rmCards = [];
+    let rmCardsError = null;
+    try {
+      const cards = await listCreditCards();
+      rmCards = cards.map((c) => ({ id: String(c.CreditCardID ?? c.ID), name: c.Name }));
+    } catch (err) {
+      rmCardsError = err.message;
+    }
+
+    let glAccounts = [];
+    try {
+      const accts = await listExpenseGLAccounts();
+      glAccounts = accts.map((a) => ({ id: String(a.GLAccountID), name: a.Name, ref: a.Reference }));
+    } catch {
+      glAccounts = [];
+    }
+
     res.render('settings', {
       title: 'Settings',
       active: 'settings',
       settings,
+      cardMappings,
+      rmCards,
+      rmCardsError,
+      glAccounts,
       notice: req.query.notice || null,
     });
+  })
+);
+
+// --- Credit card mappings (last-4 -> RM card) ------------------------------
+router.post(
+  '/settings/card-mappings',
+  wrap(async (req, res) => {
+    const last4 = String(req.body.last4 || '').replace(/\D/g, '').slice(-4);
+    const rmCardId = String(req.body.rm_card_id || '').trim();
+    const rmCardName = String(req.body.rm_card_name || '').trim() || null;
+    if (last4.length !== 4 || !rmCardId) {
+      return res.redirect('/settings?notice=' + encodeURIComponent('Enter the last 4 digits and pick a card.'));
+    }
+    await query(
+      `INSERT INTO card_mappings (last4, rm_card_id, rm_card_name)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (last4) DO UPDATE SET rm_card_id = EXCLUDED.rm_card_id, rm_card_name = EXCLUDED.rm_card_name`,
+      [last4, rmCardId, rmCardName]
+    );
+    res.redirect('/settings?notice=' + encodeURIComponent(`Mapped •••• ${last4} → ${rmCardName || rmCardId}.`));
+  })
+);
+
+router.post(
+  '/settings/card-mappings/:id/delete',
+  wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isInteger(id)) await query('DELETE FROM card_mappings WHERE id = $1', [id]);
+    res.redirect('/settings?notice=' + encodeURIComponent('Mapping removed.'));
+  })
+);
+
+// --- Default expense (GL) account -----------------------------------------
+router.post(
+  '/settings/default-gl',
+  wrap(async (req, res) => {
+    const id = String(req.body.default_gl_account_id || '').trim();
+    const name = String(req.body.default_gl_account_name || '').trim() || null;
+    if (!id) return res.redirect('/settings?notice=' + encodeURIComponent('Choose an expense account.'));
+    await query(
+      'UPDATE settings SET default_gl_account_id = $1, default_gl_account_name = $2, updated_at = now() WHERE id = 1',
+      [id, name]
+    );
+    res.redirect('/settings?notice=' + encodeURIComponent(`Default expense account set to ${name || id}.`));
   })
 );
 
@@ -215,12 +296,18 @@ router.get(
     // endpoints contain commas in embeds). Defaults to hunting for the credit
     // card transaction's child property/GL allocation structure.
     const defaults = [
-      '/CreditCardTransactions/1?embeds=Charges',
-      '/CreditCardTransactions/1?embeds=GLAllocations',
-      '/CreditCardTransactions/1?embeds=Allocations',
-      '/CreditCardTransactions/1?embeds=GLTransactions',
-      '/CreditCardTransactions/1?embeds=Account',
-      '/CreditCardTransactions/1?embeds=Properties',
+      // Hunt for the property/GL allocation child structure.
+      '/CreditCardTransactions/1?embeds=Expenses',
+      '/CreditCardTransactions/1?embeds=GLAccountAllocations',
+      '/CreditCardTransactions/1?embeds=Distributions',
+      '/CreditCardTransactions/1?embeds=CreditCardTransactionGLAllocations',
+      '/CreditCardTransactions/1?embeds=Details',
+      '/CreditCardTransactions/1?embeds=Lines',
+      // Hunt for the attachment endpoint/structure.
+      '/CreditCardTransactions/1?embeds=Attachments',
+      '/CreditCardTransactions/1?embeds=Files',
+      '/Attachments?pageSize=1',
+      '/Files?pageSize=1',
     ];
     const eps = req.query.eps ? String(req.query.eps).split('||') : defaults;
 

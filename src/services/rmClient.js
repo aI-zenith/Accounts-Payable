@@ -158,7 +158,7 @@ export async function request(path, opts = {}) {
   }
 
   if (!res.ok) {
-    const err = new Error(`Rent Manager request failed: HTTP ${res.status} ${String(text).slice(0, 200)}`);
+    const err = new Error(`Rent Manager request failed: HTTP ${res.status} ${String(text).slice(0, 500)}`);
     err.status = res.status;
     err.body = body;
     throw err;
@@ -200,13 +200,36 @@ function idFromLocation(loc) {
   return m ? Number(m[1]) : null;
 }
 
+// Robustly pull a record id out of a WAPI create response, which may be a bare
+// number, an object, or an array of one object, with varying id field names.
+function extractId(body, location, fields) {
+  if (typeof body === 'number') return body;
+  const obj = Array.isArray(body) ? body[0] : body;
+  if (obj && typeof obj === 'object') {
+    for (const f of fields) {
+      if (obj[f] != null) return obj[f];
+    }
+  }
+  return idFromLocation(location);
+}
+
 async function listAll(path) {
   const { body } = await request(path);
   return Array.isArray(body) ? body : body ? [body] : [];
 }
 
+export async function listCreditCards() {
+  return listAll('/CreditCards?pageSize=500');
+}
+
+// Expense GL accounts, excluding parent (header) accounts you can't post to.
+export async function listExpenseGLAccounts() {
+  const all = await listAll('/GLAccounts?filters=GLAccountType,eq,Expense&pageSize=500');
+  return all.filter((a) => !a.IsParent);
+}
+
 export async function findCreditCardByName(name) {
-  const cards = await listAll('/CreditCards?pageSize=500');
+  const cards = await listCreditCards();
   return bestMatch(name, cards, [(c) => c.Name]);
 }
 
@@ -337,58 +360,37 @@ export async function createCreditCardTransaction(payload) {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return (
-    (body && (body.CreditCardTransactionID || body.TransactionID || body.ID)) ||
-    idFromLocation(location)
-  );
+  return extractId(body, location, ['CreditCardTransactionID', 'TransactionID', 'ID']);
 }
 
 /**
- * Attach a PDF to a Rent Manager record as a FileAttachment.
- *
- * Per the WAPI FileAttachments/Save spec:
- *   - URL:  POST /Invoices/{id}/FileAttachments        ({id} = the transaction/invoice id)
- *   - Body: an ARRAY of FileAttachment objects (a bare object 500s).
- *   - EntityType is the eFileAttachmentRelatedObjectTypes enum ("Invoice"), and
- *     EntityKeyID is that same record id — both must be set or RM can't associate
- *     the record ("issue retrieving data from the database").
- *   - The nested File is REQUIRED on create; its Content is a Byte[] carried as
- *     base64 in JSON. RM creates the File and back-fills FileID automatically.
- *
- * @param {number} recordId   the invoice/transaction id (URL path + EntityKeyID)
- * @param {{ filename?:string, content:Buffer|Uint8Array|string, description?:string }} file
- * @returns {Promise<number|null>} the new FileAttachmentID
+ * Attach a receipt file to a credit card transaction (FileAttachmentModel).
+ * Called as a separate, non-fatal step so a failure never undoes the
+ * already-created transaction. Returns the new attachment/file id.
  */
-export async function attachInvoiceFile(recordId, { filename, content, description } = {}) {
-  if (recordId == null) throw new Error('attachInvoiceFile: a record id is required.');
-  if (!content) throw new Error('attachInvoiceFile: file content is required.');
+export async function attachReceipt(transactionId, fileBuffer, filename) {
+  const base64 = Buffer.isBuffer(fileBuffer) ? fileBuffer.toString('base64') : String(fileBuffer);
+  const name = filename || 'receipt.pdf';
+  const ext = (name.includes('.') ? name.split('.').pop() : 'pdf').toLowerCase();
 
-  const name = filename || `attachment-${recordId}.pdf`;
-  const dot = name.lastIndexOf('.');
-  const extension = (dot >= 0 ? name.slice(dot + 1) : 'pdf').toLowerCase();
-  const base64 = Buffer.isBuffer(content)
-    ? content.toString('base64')
-    : Buffer.from(content).toString('base64');
-
-  const payload = [
-    {
-      EntityType: 'Invoice',
-      EntityKeyID: recordId,
-      Description: description || name,
-      File: {
-        Name: name,
-        Extension: extension,
-        Content: base64,
-      },
+  // Attachments are a sub-collection of the transaction; the parent is implied
+  // by the URL. The File (FileModel) is required on create.
+  const payload = {
+    EntityType: 'CreditCardTransaction',
+    EntityKeyID: Number(transactionId),
+    Description: name,
+    File: {
+      Name: name,
+      Extension: ext,
+      // FileModel stores the bytes in Content (Byte[]); JSON carries it as base64.
+      Content: base64,
     },
-  ];
-
-  const { body, location } = await request(`/Invoices/${recordId}/FileAttachments`, {
+  };
+  const { body, location } = await request(`/CreditCardTransactions/${transactionId}/Attachments`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  const rec = Array.isArray(body) ? body[0] : body;
-  return (rec && (rec.FileAttachmentID || rec.ID)) || idFromLocation(location);
+  return extractId(body, location, ['FileAttachmentID', 'FileID', 'ID']);
 }
 
 // Test-only helper used by the Settings connection test.

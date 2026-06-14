@@ -143,6 +143,13 @@ code {
 .page-head {
   margin-bottom: 24px;
 }
+.page-head--row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
 .page-title {
   font-family: var(--serif);
   font-weight: 600;
@@ -690,6 +697,47 @@ input:focus-visible,
 .settings__actions {
   display: flex;
   justify-content: flex-start;
+}
+
+/* ---------- reconcile summary ---------- */
+.recon-summary {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-wrap: wrap;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  margin-bottom: 22px;
+}
+.recon-stat {
+  display: flex;
+  flex-direction: column;
+}
+.recon-stat__num {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.recon-stat__num--ok { color: var(--green); }
+.recon-stat__num--bad { color: var(--red); }
+.recon-stat__label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+}
+.recon-meta {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: right;
+  font-size: 13px;
+  color: var(--ink-muted);
 }
 
 /* ---------- error page ---------- */
