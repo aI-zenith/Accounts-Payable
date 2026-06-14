@@ -156,7 +156,7 @@ export async function request(path, opts = {}) {
   }
 
   if (!res.ok) {
-    const err = new Error(`Rent Manager request failed: HTTP ${res.status} ${String(text).slice(0, 200)}`);
+    const err = new Error(`Rent Manager request failed: HTTP ${res.status} ${String(text).slice(0, 500)}`);
     err.status = res.status;
     err.body = body;
     throw err;

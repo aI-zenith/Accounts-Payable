@@ -283,21 +283,24 @@ function memoFrom(d) {
 // Map the extracted invoice + resolved RM records into the POST body.
 // Field names are CONFIRMED from the live CreditCardTransactions schema:
 //   vendor -> AccountID + AccountType:"Vendor"; date -> TransactionDate;
-//   memo -> Comment. The property/GL allocation is a child structure (not on the
-//   header) and is added once its shape is confirmed via discovery.
+//   memo -> Comment. The API exposes no property/GL allocation field on a credit
+//   card transaction, so the matched property name is folded into the Comment for
+//   visibility; staff allocate/categorize it in Rent Manager.
 function buildCreditCardTransaction({ card, vendor, property, d }) {
+  const comment = [memoFrom(d), property ? `Property: ${property.Name}`.trim() : null]
+    .filter(Boolean)
+    .join(' | ')
+    .slice(0, 250);
   return {
     CreditCardID: card.CreditCardID ?? card.ID,
     AccountID: vendor.VendorID ?? vendor.ID,
     AccountType: 'Vendor',
     TransactionDate: normalizeDate(d.invoice_date) || new Date().toISOString().slice(0, 10),
     Reference: d.invoice_number || '',
-    Comment: memoFrom(d),
+    Comment: comment,
     Amount: normalizeNumber(d.total) ?? 0,
     // "Charge" is the transaction direction; RM records TransactionType "CreditCard".
     Type: 'Charge',
-    // TODO(property): attach `property` (PropertyID ${'${property?.PropertyID}'}) via the
-    // confirmed child allocation structure once discovery returns it.
   };
 }
 
