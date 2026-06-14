@@ -916,6 +916,7 @@ a.chip:hover { border-color: var(--line-strong); }
 .addrem { margin-top: 12px; }
 .assignees { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
 .taskform fieldset { border: 0; padding: 0; margin: 0; }
+.inputwrap { position: relative; }
 .linkresults {
   position: absolute;
   top: 100%;

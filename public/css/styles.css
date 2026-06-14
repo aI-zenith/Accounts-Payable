@@ -490,6 +490,7 @@ input:focus-visible,
 
 .fieldrow {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   margin-bottom: 16px;
 }
