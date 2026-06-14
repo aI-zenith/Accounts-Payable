@@ -1,0 +1,182 @@
+/* Tasks redesign — content-area design system (per handoff). Scoped under .tk
+   so it never touches the existing charcoal sidebar/app shell. */
+
+.tk {
+  --c-canvas: #f4f5f7;
+  --c-card: #ffffff;
+  --c-bd: #e6e8ec;
+  --c-bd2: #eceef1;
+  --c-ink: #11151c;
+  --c-2: #5b6472;
+  --c-3: #8a909c;
+  --c-lbl: #9aa0ab;
+  --c-prim: #14181f;
+  --c-acc: #2b5fd9;
+  --c-acc-bg: #eef3ff;
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--c-ink);
+}
+.tk * { box-sizing: border-box; }
+.tk a { color: var(--c-acc); text-decoration: none; }
+.tk .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px; color: var(--c-lbl); text-transform: uppercase; }
+.tk .mono { font-family: 'Geist Mono', ui-monospace, monospace; }
+
+.tk .btnp { background: var(--c-prim); color: #fff; border: none; border-radius: 9px; padding: 9px 16px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+.tk .btnp:hover { background: #000; }
+.tk .btng { background: #fff; color: var(--c-ink); border: 1px solid var(--c-bd); border-radius: 9px; padding: 8px 14px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.tk .btng:hover { border-color: #cfd4dc; }
+.tk .in { width: 100%; border: 1px solid var(--c-bd); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 13.5px; color: var(--c-ink); background: #fff; outline: none; }
+.tk .in:focus { border-color: var(--c-acc); }
+.tk textarea.in { resize: vertical; line-height: 1.55; }
+
+.tk .av { border-radius: 50%; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+
+/* status + priority */
+.tps { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 7px; }
+.tps::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.tps-open { color: #5b6472; background: #eef0f4; }
+.tps-in_progress { color: #2b5fd9; background: #e9eefc; }
+.tps-blocked { color: #c0392b; background: #fbeae8; }
+.tps-in_review { color: #9a6b12; background: #f7efdc; }
+.tps-done { color: #2f9e6e; background: #e7f5ee; }
+.tpr { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+.tpr::before { content: ''; width: 7px; height: 7px; border-radius: 2px; background: currentColor; }
+.tpr-urgent { color: #c0392b; }
+.tpr-high { color: #c2611f; }
+.tpr-medium { color: #2b5fd9; }
+.tpr-low { color: #8a909c; }
+.tdue { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 7px; white-space: nowrap; }
+.tdue-red { color: #c0392b; background: #fbeae8; }
+.tdue-amber { color: #9a6b12; background: #f7efdc; }
+.tdue-gray { color: #5b6472; background: #eef0f4; }
+
+/* view switcher + sub-nav */
+.tk-top { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+.tk-title { font-size: 20px; font-weight: 700; letter-spacing: -0.2px; margin: 0; }
+.tk-views { display: inline-flex; align-items: center; background: #f1f2f5; border: 1px solid var(--c-bd); border-radius: 9px; padding: 3px; gap: 2px; }
+.tk-views a { font-size: 12.5px; font-weight: 600; color: var(--c-2); padding: 6px 12px; border-radius: 7px; }
+.tk-views a.on { color: #fff; background: var(--c-prim); }
+
+/* ---------- Split Inbox ---------- */
+.tk-inbox { display: flex; gap: 0; background: var(--c-card); border: 1px solid var(--c-bd); border-radius: 14px; overflow: hidden; height: calc(100vh - 180px); min-height: 480px; }
+.tkin-list { width: 388px; flex-shrink: 0; border-right: 1px solid var(--c-bd); display: flex; flex-direction: column; min-width: 0; }
+.tkin-search { display: flex; align-items: center; gap: 9px; background: var(--c-canvas); border: 1px solid var(--c-bd); border-radius: 9px; padding: 8px 11px; color: var(--c-3); margin: 14px 16px 10px; }
+.tkin-search input { flex: 1; border: none; outline: none; background: transparent; font: inherit; font-size: 12.5px; }
+.tkin-segs { display: flex; gap: 6px; padding: 0 16px 11px; border-bottom: 1px solid var(--c-bd2); }
+.tkin-seg { padding: 6px 11px; border-radius: 8px; font-size: 12.5px; font-weight: 600; color: var(--c-2); background: var(--c-canvas); cursor: pointer; text-decoration: none; }
+.tkin-seg.on { background: var(--c-prim); color: #fff; }
+.tkin-seg span { margin-left: 6px; opacity: 0.7; }
+.tkin-rows { flex: 1; overflow-y: auto; }
+.tkin-gh { position: sticky; top: 0; background: #fafbfc; border-bottom: 1px solid var(--c-bd2); padding: 7px 18px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; z-index: 1; }
+.tkin-row { display: flex; gap: 11px; padding: 13px 18px; border-bottom: 1px solid #f4f5f7; cursor: pointer; text-decoration: none; color: inherit; }
+.tkin-row:hover { background: #fafbfc; }
+.tkin-row.on { background: #f5f8ff; box-shadow: inset 3px 0 0 var(--c-acc); }
+.tkin-psq { width: 8px; height: 8px; border-radius: 2px; margin-top: 6px; flex-shrink: 0; }
+.tkin-rmain { flex: 1; min-width: 0; }
+.tkin-rtitle { font-size: 13.5px; font-weight: 600; color: var(--c-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tkin-rsub { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 11.5px; color: var(--c-3); }
+.tkin-rmeta { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+
+/* detail pane */
+.tkin-detail { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #f7f8fa; }
+.tkd-empty { flex: 1; display: grid; place-items: center; color: var(--c-3); font-size: 13.5px; }
+.tkd-head { padding: 18px 26px 14px; background: #fff; border-bottom: 1px solid var(--c-bd2); }
+.tkd-crumb { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.tkd-cat { font-size: 11.5px; font-weight: 500; color: var(--c-2); background: #f1f2f5; padding: 2px 8px; border-radius: 6px; }
+.tkd-title { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.2; margin: 0; display: flex; gap: 11px; align-items: flex-start; }
+.tkd-check { width: 22px; height: 22px; border: 1.6px solid #cfd4dc; border-radius: 6px; margin-top: 3px; flex-shrink: 0; cursor: pointer; display: inline-grid; place-items: center; background: #fff; }
+.tkd-pillrow { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.tkd-tabs { display: flex; gap: 2px; padding: 0 26px; background: #fff; border-bottom: 1px solid var(--c-bd2); }
+.tkd-tab { padding: 13px 4px; margin-right: 20px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--c-3); border-bottom: 2px solid transparent; text-decoration: none; }
+.tkd-tab.on { color: var(--c-ink); border-bottom-color: var(--c-prim); }
+.tkd-tab b { margin-left: 6px; font-size: 10.5px; background: #eceef1; color: var(--c-2); padding: 1px 6px; border-radius: 10px; font-weight: 600; }
+.tkd-body { flex: 1; overflow-y: auto; padding: 22px 26px; min-height: 0; }
+
+.tkd-desc { background: #fff; border: 1px solid var(--c-bd2); border-radius: 12px; padding: 15px 17px; font-size: 13.5px; line-height: 1.6; color: #3a4150; margin-bottom: 22px; white-space: pre-wrap; }
+.tkd-thread { display: flex; flex-direction: column; gap: 18px; }
+.tkmsg { display: flex; gap: 11px; }
+.tkmsg.me { flex-direction: row-reverse; }
+.tkmsg__b { max-width: 78%; min-width: 0; }
+.tkmsg__meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 11.5px; color: var(--c-3); }
+.tkmsg.me .tkmsg__meta { flex-direction: row-reverse; }
+.tkmsg__bub { font-size: 13px; line-height: 1.55; color: #3a4150; background: #fff; border: 1px solid var(--c-bd2); border-radius: 12px; border-top-left-radius: 3px; padding: 10px 13px; }
+.tkmsg.me .tkmsg__bub { background: #eef3ff; border-color: #dbe6ff; border-top-left-radius: 12px; border-top-right-radius: 3px; }
+.tkmsg__bub b.men { color: var(--c-acc); }
+
+.tkck { background: #fff; border: 1px solid var(--c-bd2); border-radius: 12px; padding: 18px 20px; }
+.tkck__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; font-size: 13px; font-weight: 600; }
+.tkck__bar { flex: 1; max-width: 180px; height: 6px; background: #eceef1; border-radius: 6px; margin-left: 16px; overflow: hidden; }
+.tkck__bar i { display: block; height: 100%; background: #2f9e6e; border-radius: 6px; }
+.tkck__item { display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 9px; }
+.tkck__item:hover { background: #fafbfc; }
+.tkck__box { width: 18px; height: 18px; border-radius: 5px; border: 1.6px solid #cfd4dc; display: inline-grid; place-items: center; background: #fff; cursor: pointer; flex-shrink: 0; }
+.tkck__box.on { background: #2f9e6e; border-color: #2f9e6e; }
+.tkck__lbl { font-size: 13px; }
+.tkck__lbl.on { color: #9aa0ab; text-decoration: line-through; }
+
+.tkfile { display: flex; align-items: center; gap: 13px; padding: 12px 14px; border: 1px solid var(--c-bd2); border-radius: 11px; background: #fff; margin-bottom: 9px; }
+.tkfile__ic { width: 38px; height: 38px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; font-size: 16px; }
+.tkdrop { border: 1.5px dashed #d3d7de; border-radius: 12px; padding: 24px; text-align: center; color: var(--c-3); background: #fff; }
+.tkdrop b { color: var(--c-2); font-size: 13px; }
+
+.tkact { display: flex; gap: 13px; padding: 4px 0; }
+.tkact__rail { display: flex; flex-direction: column; align-items: center; }
+.tkact__dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; }
+.tkact__line { flex: 1; width: 1.5px; background: #eceef1; margin: 3px 0; }
+.tkact__txt { font-size: 13px; color: #3a4150; }
+.tkact__time { font-size: 11.5px; color: var(--c-3); margin-top: 2px; }
+
+/* ---------- comment composer ---------- */
+.tkcc { display: flex; align-items: flex-start; gap: 11px; }
+.tkcc__box { flex: 1; min-width: 0; border: 1px solid var(--c-bd); border-radius: 12px; padding: 11px 13px; background: #fff; position: relative; }
+.tkcc__ta { width: 100%; border: none; outline: none; resize: none; font: inherit; font-size: 13px; min-height: 38px; line-height: 1.55; }
+.tkcc__tools { display: flex; align-items: center; gap: 3px; margin-top: 6px; }
+.tkcc__tool { width: 30px; height: 30px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--c-3); cursor: pointer; background: none; border: none; }
+.tkcc__tool:hover { background: #f1f2f5; color: var(--c-acc); }
+.tkcc__polish { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--c-acc); background: var(--c-acc-bg); border: 1px solid #dbe6ff; padding: 6px 10px; border-radius: 7px; cursor: pointer; margin-left: 3px; }
+.tkcc__send { background: var(--c-prim); color: #fff; border: none; border-radius: 8px; padding: 8px 17px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.tkrec { display: flex; align-items: center; gap: 10px; border: 1px solid #f3c9c4; background: #fdf1f0; border-radius: 10px; padding: 8px 11px; margin: 6px 0; }
+.tkrec__dot { width: 9px; height: 9px; border-radius: 50%; background: #d6453d; animation: tk-pulse 1s infinite; flex-shrink: 0; }
+.tkrec__time { font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 600; color: #b23b30; }
+.tkmedia { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--c-bd2); border-radius: 8px; padding: 5px 9px; background: #fafbfc; font-size: 11.5px; font-weight: 500; margin: 0 6px 6px 0; }
+.tkmenu { position: absolute; background: #fff; border: 1px solid var(--c-bd); border-radius: 11px; box-shadow: 0 14px 34px rgba(16, 21, 28, 0.18); padding: 6px; z-index: 20; width: 212px; }
+.tkmenu__opt { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: 8px; font-size: 12.5px; cursor: pointer; color: var(--c-ink); }
+.tkmenu__opt:hover { background: #f4f5f7; }
+@keyframes tk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+@keyframes tk-spin { to { transform: rotate(360deg); } }
+.tkbusy { position: absolute; inset: -2px; background: rgba(255, 255, 255, 0.76); display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--c-acc); font-size: 12.5px; font-weight: 600; border-radius: 12px; }
+.tkspin { width: 14px; height: 14px; border: 2px solid #cdd9f7; border-top-color: var(--c-acc); border-radius: 50%; animation: tk-spin 0.7s linear infinite; display: inline-block; }
+
+/* ---------- Task form (centered card) ---------- */
+.tkform-wrap { max-width: 780px; margin: 0 auto; }
+.tkform { background: #fff; border: 1px solid var(--c-bd); border-radius: 16px; box-shadow: 0 1px 2px rgba(16, 21, 28, 0.05); overflow: hidden; }
+.tkform__head { display: flex; align-items: center; justify-content: space-between; padding: 20px 26px; border-bottom: 1px solid var(--c-bd2); }
+.tkform__crumb { font-size: 11px; color: var(--c-lbl); font-weight: 500; }
+.tkform__title { font-size: 18px; font-weight: 700; letter-spacing: -0.2px; }
+.tkform__body { padding: 22px 26px; display: flex; flex-direction: column; gap: 18px; }
+.tkform__foot { display: flex; align-items: center; gap: 10px; padding: 16px 26px; border-top: 1px solid var(--c-bd2); }
+.tkrow { display: flex; gap: 16px; flex-wrap: wrap; }
+.tkfield { flex: 1; min-width: 140px; display: flex; flex-direction: column; gap: 7px; }
+.tkfield--narrow { flex: 0 0 150px; }
+.tkfield > .lbl { display: flex; align-items: center; justify-content: space-between; }
+.tk-swatches { display: flex; align-items: center; gap: 8px; border: 1px solid var(--c-bd); border-radius: 10px; padding: 0 11px; height: 44px; }
+.tk-swatch { width: 18px; height: 18px; border-radius: 50%; cursor: pointer; box-shadow: 0 0 0 1px rgba(0,0,0,0.06); }
+.tk-swatch.on { box-shadow: 0 0 0 2px #fff, 0 0 0 4px currentColor; }
+.tk-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; border: 1px solid var(--c-bd); border-radius: 10px; padding: 6px 9px; min-height: 44px; cursor: pointer; background: #fff; }
+.tk-chip { display: flex; align-items: center; gap: 6px; background: #f5f8ff; border: 1px solid #dbe6ff; padding: 3px 8px 3px 3px; border-radius: 20px; font-size: 12px; }
+.tk-chip .x { color: #9aa0ab; cursor: pointer; }
+.tk-add { font-size: 12.5px; color: var(--c-3); display: inline-flex; align-items: center; gap: 4px; }
+.tk-people { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 30; background: #fff; border: 1px solid var(--c-bd); border-radius: 11px; box-shadow: 0 14px 34px rgba(16,21,28,0.18); padding: 8px; max-height: 230px; overflow-y: auto; }
+.tk-prow { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 8px; cursor: pointer; }
+.tk-prow:hover { background: #f4f5f7; }
+.tk-recur { background: #fff; border: 1px solid var(--c-bd2); border-radius: 12px; padding: 16px; }
+.tk-toggle { width: 34px; height: 20px; border-radius: 11px; background: #cfd4dc; position: relative; cursor: pointer; transition: background 0.15s; flex-shrink: 0; }
+.tk-toggle.on { background: var(--c-acc); }
+.tk-toggle i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+.tk-toggle.on i { left: 16px; }
+.tk-drop2 { border: 1.5px dashed #d3d7de; border-radius: 12px; padding: 15px; display: flex; align-items: center; gap: 13px; background: #fafbfc; }
+
+@media (max-width: 880px) {
+  .tk-inbox { flex-direction: column; height: auto; }
+  .tkin-list { width: 100%; border-right: none; border-bottom: 1px solid var(--c-bd); max-height: 360px; }
+}

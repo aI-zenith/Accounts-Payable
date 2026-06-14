@@ -407,4 +407,171 @@
       if (!e.target.closest('#linkResults') && e.target !== linkSearch) linkResults.hidden = true;
     });
   }
+
+  // ====== Tasks redesign (content-area) ======
+  const AVC = ['#2b5fd9', '#7a4dd1', '#0f9d8f', '#c2611f', '#c0398a', '#3a7a3a', '#b5791a', '#d6453d'];
+  const avColor = (n) => { let h = 0; for (const ch of String(n || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return AVC[h % AVC.length]; };
+  const initials = (n) => { const p = String(n || '?').trim().split(/\s+/); return ((p[0][0] || '?') + (p[1] ? p[1][0] : '')).toUpperCase(); };
+  const escTxt = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const escAttr = (s) => String(s == null ? '' : s).replace(/"/g, '&quot;');
+
+  // ---- AI Polish (form description + comment composer) ----
+  document.querySelectorAll('[data-polish]').forEach((btn) => {
+    const scope = btn.closest('.tkfield') || btn.closest('.tkcc__box');
+    if (!scope) return;
+    const menu = (btn.parentElement && btn.parentElement.querySelector('[data-polish-menu]')) || scope.querySelector('[data-polish-menu]');
+    const ta = scope.querySelector('textarea');
+    const busy = scope.querySelector('[data-busy]');
+    const ctx = btn.getAttribute('data-ctx') || 'task description';
+    btn.addEventListener('click', (e) => { e.stopPropagation(); if (menu) menu.hidden = !menu.hidden; });
+    if (menu)
+      menu.querySelectorAll('[data-mode]').forEach((opt) => {
+        opt.addEventListener('click', () => {
+          menu.hidden = true;
+          if (busy) busy.hidden = false;
+          fetch('/tasks/ai/polish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: ta ? ta.value : '', mode: opt.getAttribute('data-mode'), context: ctx }),
+          })
+            .then((r) => r.json())
+            .then((d) => { if (ta && d.text) ta.value = d.text; })
+            .catch(() => {})
+            .finally(() => { if (busy) busy.hidden = true; });
+        });
+      });
+  });
+  document.addEventListener('click', () => document.querySelectorAll('[data-polish-menu]').forEach((m) => (m.hidden = true)));
+
+  // ---- Comment composer: attach / voice / screen / mention / paste ----
+  document.querySelectorAll('[data-composer]').forEach((form) => {
+    const fileInput = form.querySelector('[data-file]');
+    const kindInput = form.querySelector('[data-kind]');
+    const durInput = form.querySelector('[data-duration]');
+    const mediaList = form.querySelector('[data-media-list]');
+    const recBar = form.querySelector('[data-rec]');
+    const recLabel = form.querySelector('[data-rec-label]');
+    const recTime = form.querySelector('[data-rec-time]');
+    const ta = form.querySelector('[data-text]');
+    let mr = null, chunks = [], startT = 0, timer = null, stream = null;
+
+    const renderMedia = (name, kind) => {
+      mediaList.innerHTML =
+        '<span class="tkmedia">' + (kind === 'voice' ? '🎙️' : kind === 'screen' ? '🖥️' : '📄') + ' ' + escTxt(name) +
+        ' <span class="x" data-clear style="cursor:pointer;color:#9aa0ab">×</span></span>';
+    };
+    const setFile = (file, kind, dur) => { const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files; kindInput.value = kind; if (durInput) durInput.value = dur || ''; renderMedia(file.name, kind); };
+    mediaList.addEventListener('click', (e) => { if (e.target.closest('[data-clear]')) { fileInput.value = ''; kindInput.value = 'file'; mediaList.innerHTML = ''; } });
+
+    const attachBtn = form.querySelector('[data-attach]');
+    if (attachBtn) attachBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) { kindInput.value = 'file'; renderMedia(fileInput.files[0].name, 'file'); } });
+
+    const startRec = async (type) => {
+      try {
+        stream = type === 'voice'
+          ? await navigator.mediaDevices.getUserMedia({ audio: true })
+          : await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        chunks = [];
+        const mime = type === 'voice' ? 'audio/webm' : 'video/webm';
+        mr = new MediaRecorder(stream, MediaRecorder.isTypeSupported(mime) ? { mimeType: mime } : undefined);
+        mr.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+        mr.onstop = () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const blob = new Blob(chunks, { type: mr.mimeType || mime });
+          const dur = Math.max(1, Math.round((Date.now() - startT) / 1000));
+          const fname = (type === 'voice' ? 'voice-note' : 'screen-recording') + '-' + Date.now() + '.webm';
+          setFile(new File([blob], fname, { type: blob.type }), type, dur);
+        };
+        mr.start();
+        startT = Date.now();
+        recBar.hidden = false;
+        recLabel.textContent = type === 'voice' ? 'Recording voice note' : 'Recording screen';
+        timer = setInterval(() => { const s = Math.round((Date.now() - startT) / 1000); recTime.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }, 400);
+      } catch (err) { alert('Could not start recording: ' + err.message); }
+    };
+    const stopRec = () => { clearInterval(timer); recBar.hidden = true; if (mr && mr.state !== 'inactive') mr.stop(); };
+    const cancelRec = () => { clearInterval(timer); recBar.hidden = true; if (mr) { mr.onstop = null; try { mr.stop(); } catch (e) {} } if (stream) stream.getTracks().forEach((t) => t.stop()); chunks = []; };
+    const vb = form.querySelector('[data-voice]'); if (vb) vb.addEventListener('click', () => startRec('voice'));
+    const sb = form.querySelector('[data-screen]'); if (sb) sb.addEventListener('click', () => startRec('screen'));
+    const stb = form.querySelector('[data-rec-stop]'); if (stb) stb.addEventListener('click', stopRec);
+    const cb = form.querySelector('[data-rec-cancel]'); if (cb) cb.addEventListener('click', cancelRec);
+    const mb = form.querySelector('[data-mention]'); if (mb && ta) mb.addEventListener('click', () => { ta.value += (ta.value && !ta.value.endsWith(' ') ? ' ' : '') + '@'; ta.focus(); });
+    if (ta) ta.addEventListener('paste', (e) => { const f = e.clipboardData && e.clipboardData.files[0]; if (f) setFile(f, 'file'); });
+  });
+
+  // ---- People multi-select (assignees / CC) ----
+  document.querySelectorAll('[data-multi]').forEach((box) => {
+    const name = box.getAttribute('data-multi');
+    const wrap = box.parentElement;
+    const pop = wrap.querySelector('[data-people]');
+    const addBtn = box.querySelector('[data-add]');
+    const selected = () => Array.from(box.querySelectorAll('input[type=hidden]')).map((i) => i.value);
+    const addChip = (p) => {
+      if (box.querySelector('.tk-chip[data-id="' + p.id + '"]')) return;
+      const span = document.createElement('span');
+      span.className = 'tk-chip';
+      span.setAttribute('data-id', p.id);
+      span.innerHTML =
+        '<span class="av" style="width:21px;height:21px;background:' + avColor(p.name) + ';font-size:9px">' + initials(p.name) + '</span>' +
+        escTxt(p.name) + '<span class="x" data-remove>×</span><input type="hidden" name="' + name + '" value="' + p.id + '">';
+      box.insertBefore(span, addBtn);
+    };
+    const renderPop = () => {
+      fetch('/tasks/people')
+        .then((r) => r.json())
+        .then((d) => {
+          const sel = selected();
+          pop.innerHTML = (d.results || [])
+            .map((p) =>
+              '<div class="tk-prow" data-id="' + p.id + '" data-name="' + escAttr(p.name) + '">' +
+              '<span class="av" style="width:28px;height:28px;background:' + avColor(p.name) + ';font-size:10px">' + initials(p.name) + '</span>' +
+              '<div style="flex:1"><div style="font-size:12.5px;font-weight:600">' + escTxt(p.name) + '</div><div style="font-size:11px;color:#9aa0ab">' + escTxt(p.role || '') + '</div></div>' +
+              '<span style="color:#2b5fd9;font-weight:700">' + (sel.includes(String(p.id)) ? '✓' : '') + '</span></div>'
+            )
+            .join('');
+          pop.hidden = false;
+        });
+    };
+    box.addEventListener('click', (e) => {
+      const rm = e.target.closest('[data-remove]');
+      if (rm) { rm.closest('.tk-chip').remove(); return; }
+      renderPop();
+    });
+    pop.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-id]');
+      if (!row) return;
+      const id = row.getAttribute('data-id');
+      const ex = box.querySelector('.tk-chip[data-id="' + id + '"]');
+      if (ex) ex.remove();
+      else addChip({ id, name: row.getAttribute('data-name') });
+      renderPop();
+    });
+    document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) pop.hidden = true; });
+  });
+
+  // ---- Color swatches ----
+  document.querySelectorAll('[data-swatches]').forEach((sw) => {
+    const input = sw.parentElement.querySelector('[data-color-input]');
+    sw.addEventListener('click', (e) => {
+      const s = e.target.closest('[data-color]');
+      if (!s) return;
+      sw.querySelectorAll('.tk-swatch').forEach((x) => x.classList.remove('on'));
+      s.classList.add('on');
+      if (input) input.value = s.getAttribute('data-color');
+    });
+  });
+
+  // ---- Recurring toggle ----
+  document.querySelectorAll('[data-recur-toggle]').forEach((tg) => {
+    const card = tg.closest('.tk-recur');
+    const onInput = card.querySelector('[data-recur-on]');
+    const fields = card.querySelector('[data-recur-fields]');
+    tg.addEventListener('click', () => {
+      const on = !tg.classList.contains('on');
+      tg.classList.toggle('on', on);
+      if (onInput) onInput.value = on ? '1' : '';
+      if (fields) fields.style.opacity = on ? '1' : '.45';
+    });
+  });
 })();

@@ -13,6 +13,10 @@
     />
     <link rel="stylesheet" href="/css/styles.css" />
     <link rel="stylesheet" href="/css/app.css" />
+    <% if (typeof active !== 'undefined' && active === 'tasks') { %>
+      <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+      <link rel="stylesheet" href="/css/tasks.css" />
+    <% } %>
   </head>
   <% if (typeof currentUser !== 'undefined' && currentUser) { %>
   <body class="app">

@@ -1,15 +1,21 @@
 import { query } from '../db/pool.js';
 
-// Reference values (kept in code; categories live in the DB and are editable).
-export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
-export const STATUSES = ['open', 'in_progress', 'completed', 'cancelled'];
-export const OPEN_STATUSES = ['open', 'in_progress'];
-export const LINK_TYPES = ['tenant', 'owner', 'prospect', 'vendor'];
+// Reference values (redesign vocabulary). Categories live in the DB.
+export const PRIORITIES = ['urgent', 'high', 'medium', 'low'];
+export const STATUSES = ['open', 'in_progress', 'blocked', 'in_review', 'done'];
+export const OPEN_STATUSES = ['open', 'in_progress', 'blocked', 'in_review'];
+export const LINK_TYPES = ['tenant', 'owner', 'prospect', 'vendor', 'property', 'unit'];
 export const SNOOZE_DAYS = 7;
+
+// Labels for display.
+export const STATUS_LABELS = {
+  open: 'Open', in_progress: 'In Progress', blocked: 'Blocked', in_review: 'In Review', done: 'Done',
+};
+export const PRIORITY_LABELS = { urgent: 'Urgent', high: 'High', medium: 'Medium', low: 'Low' };
 
 const SORTABLE = {
   due_at: 't.due_at',
-  priority: "array_position(ARRAY['urgent','high','normal','low'], t.priority)",
+  priority: "array_position(ARRAY['urgent','high','medium','low'], t.priority)",
   status: 't.status',
   title: 'lower(t.title)',
   created_at: 't.created_at',
@@ -119,7 +125,7 @@ export async function getTask(id, viewer) {
     const mine = task.created_by === viewer.id || task.assignees.some((a) => a.id === viewer.id);
     if (!mine) return { forbidden: true };
   }
-  const [comments, history, attachments, reminders] = await Promise.all([
+  const [comments, history, attachments, reminders, subtasks, cc, watchers] = await Promise.all([
     query(
       `SELECT c.*, u.name, u.email FROM task_comments c LEFT JOIN users u ON u.id = c.user_id
          WHERE c.task_id = $1 ORDER BY c.created_at ASC`,
@@ -130,14 +136,64 @@ export async function getTask(id, viewer) {
          WHERE h.task_id = $1 ORDER BY h.created_at DESC`,
       [id]
     ),
-    query('SELECT id, filename, mime_type, created_at FROM task_attachments WHERE task_id = $1 ORDER BY created_at', [id]),
+    query(
+      'SELECT id, filename, mime_type, kind, duration_sec, comment_id, created_at FROM task_attachments WHERE task_id = $1 ORDER BY created_at',
+      [id]
+    ),
     query('SELECT * FROM reminders WHERE task_id = $1 AND user_id = $2 ORDER BY remind_at', [id, viewer.id]),
+    query('SELECT id, label, done, sort FROM task_subtasks WHERE task_id = $1 ORDER BY sort, id', [id]),
+    peopleFor('task_cc', id),
+    peopleFor('task_watchers', id),
   ]);
   task.comments = comments.rows;
   task.history = history.rows;
   task.attachments = attachments.rows;
   task.reminders = reminders.rows;
+  task.subtasks = subtasks.rows;
+  task.cc = cc;
+  task.watchers = watchers;
+  task.tags = Array.isArray(task.tags) ? task.tags : [];
   return task;
+}
+
+// --- subtasks / checklist --------------------------------------------------
+export async function addSubtask(taskId, label, actor) {
+  const text = String(label || '').trim();
+  if (!text) return;
+  await query('INSERT INTO task_subtasks (task_id, label) VALUES ($1,$2)', [taskId, text]);
+  await logHistory(taskId, actor.id, 'checklist', `Added: ${text.slice(0, 60)}`);
+}
+export async function toggleSubtask(subId, actor) {
+  const { rows } = await query(
+    'UPDATE task_subtasks SET done = NOT done WHERE id = $1 RETURNING task_id, done, label',
+    [subId]
+  );
+  if (rows[0]) await logHistory(rows[0].task_id, actor.id, 'checklist', `${rows[0].done ? 'Done' : 'Reopened'}: ${rows[0].label.slice(0, 60)}`);
+  return rows[0];
+}
+export async function deleteSubtask(subId) {
+  await query('DELETE FROM task_subtasks WHERE id = $1', [subId]);
+}
+
+// --- inbox grouping (Overdue / Today / Upcoming / Completed) ---------------
+export async function groupInbox(viewer, f = {}) {
+  const tasks = await listTasks(viewer, { q: f.q || '', sort: 'due_at' });
+  let list = tasks;
+  if (f.seg === 'mine') list = tasks.filter((t) => t.assignees.some((a) => a.id === viewer.id));
+  else if (f.seg === 'unassigned') list = tasks.filter((t) => t.assignees.length === 0);
+
+  const now = Date.now();
+  const startTomorrow = new Date();
+  startTomorrow.setHours(24, 0, 0, 0);
+  const groups = { overdue: [], today: [], upcoming: [], completed: [] };
+  for (const t of list) {
+    if (t.status === 'done') groups.completed.push(t);
+    else if (!t.due_at) groups.upcoming.push(t);
+    else if (new Date(t.due_at).getTime() < now) groups.overdue.push(t);
+    else if (new Date(t.due_at).getTime() < startTomorrow.getTime()) groups.today.push(t);
+    else groups.upcoming.push(t);
+  }
+  return groups;
 }
 
 async function logHistory(taskId, userId, action, detail) {
@@ -161,23 +217,45 @@ async function notify(userIds, taskId, type, message) {
   }
 }
 
-async function setAssignees(taskId, userIds) {
-  await query('DELETE FROM task_assignees WHERE task_id = $1', [taskId]);
+async function setPeople(table, taskId, userIds) {
+  await query(`DELETE FROM ${table} WHERE task_id = $1`, [taskId]);
   for (const uid of [...new Set((userIds || []).map(Number).filter(Boolean))]) {
-    await query('INSERT INTO task_assignees (task_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [taskId, uid]);
+    await query(`INSERT INTO ${table} (task_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [taskId, uid]);
   }
+}
+const setAssignees = (taskId, ids) => setPeople('task_assignees', taskId, ids);
+const setCc = (taskId, ids) => setPeople('task_cc', taskId, ids);
+const setWatchers = (taskId, ids) => setPeople('task_watchers', taskId, ids);
+
+async function peopleFor(table, taskId) {
+  const { rows } = await query(
+    `SELECT u.id, u.name, u.email FROM ${table} p JOIN users u ON u.id = p.user_id
+      WHERE p.task_id = $1 ORDER BY lower(coalesce(u.name,u.email))`,
+    [taskId]
+  );
+  return rows.map((r) => ({ id: r.id, name: r.name || r.email, email: r.email }));
+}
+
+function normCost(v) {
+  if (v == null || v === '') return null;
+  const n = Math.round(Number(String(v).replace(/[^0-9.]/g, '')) * 100);
+  return Number.isFinite(n) ? n : null;
+}
+function normTags(v) {
+  const arr = Array.isArray(v) ? v : typeof v === 'string' ? v.split(',') : [];
+  return [...new Set(arr.map((t) => String(t).trim()).filter(Boolean))].slice(0, 20);
 }
 
 export async function createTask(data, actor) {
   const { rows } = await query(
     `INSERT INTO tasks (title, description, category, priority, status, color, due_at, recurrence,
-                        link_type, link_id, link_name, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+                        link_type, link_id, link_name, tags, estimated_cost_cents, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14) RETURNING id`,
     [
       String(data.title || '').trim() || 'Untitled task',
       data.description || null,
       data.category || null,
-      PRIORITIES.includes(data.priority) ? data.priority : 'normal',
+      PRIORITIES.includes(data.priority) ? data.priority : 'medium',
       STATUSES.includes(data.status) ? data.status : 'open',
       data.color || null,
       data.due_at || null,
@@ -185,17 +263,21 @@ export async function createTask(data, actor) {
       data.link_type || null,
       data.link_id || null,
       data.link_name || null,
+      JSON.stringify(normTags(data.tags)),
+      normCost(data.estimated_cost),
       actor.id,
     ]
   );
   const id = rows[0].id;
   await setAssignees(id, data.assignees);
+  await setCc(id, data.cc);
+  await setWatchers(id, data.watchers);
   await logHistory(id, actor.id, 'created', `Created “${data.title}”`);
   await notify(
-    (data.assignees || []).map(Number).filter((u) => u !== actor.id),
+    [...(data.assignees || []), ...(data.cc || [])].map(Number).filter((u) => u !== actor.id),
     id,
     'assigned',
-    `You were assigned: ${data.title}`
+    `You were added to: ${data.title}`
   );
   return id;
 }
@@ -205,7 +287,8 @@ export async function updateTask(id, data, actor) {
   if (!before) return;
   await query(
     `UPDATE tasks SET title=$2, description=$3, category=$4, priority=$5, status=$6, color=$7,
-            due_at=$8, recurrence=$9, link_type=$10, link_id=$11, link_name=$12, updated_at=now()
+            due_at=$8, recurrence=$9, link_type=$10, link_id=$11, link_name=$12,
+            tags=$13::jsonb, estimated_cost_cents=$14, updated_at=now()
        WHERE id=$1`,
     [
       id,
@@ -220,9 +303,13 @@ export async function updateTask(id, data, actor) {
       data.link_type ?? before.link_type,
       data.link_id ?? before.link_id,
       data.link_name ?? before.link_name,
+      JSON.stringify(data.tags !== undefined ? normTags(data.tags) : (before.tags || [])),
+      data.estimated_cost !== undefined ? normCost(data.estimated_cost) : before.estimated_cost_cents,
     ]
   );
   if (data.assignees !== undefined) await setAssignees(id, data.assignees);
+  if (data.cc !== undefined) await setCc(id, data.cc);
+  if (data.watchers !== undefined) await setWatchers(id, data.watchers);
 
   // Compact change log.
   const changes = [];
@@ -262,7 +349,7 @@ export async function setStatus(id, status, actor) {
   await logHistory(id, actor.id, 'status', `${before.status} → ${status}`);
 
   // Spawn the next occurrence when a recurring task is completed.
-  if (status === 'completed' && before.recurrence && before.due_at) {
+  if (status === 'done' && before.recurrence && before.due_at) {
     let rec = before.recurrence;
     if (typeof rec === 'string') {
       try {
@@ -317,17 +404,25 @@ export async function softDelete(id, actor) {
   await logHistory(id, actor.id, 'deleted', 'Moved to trash');
 }
 
-export async function addComment(id, actor, body) {
+export async function addComment(id, actor, body, mentions = []) {
   const text = String(body || '').trim();
-  if (!text) return;
-  await query('INSERT INTO task_comments (task_id, user_id, body) VALUES ($1,$2,$3)', [id, actor.id, text]);
+  if (!text) return null;
+  const { rows } = await query(
+    'INSERT INTO task_comments (task_id, user_id, body, mentions) VALUES ($1,$2,$3,$4::jsonb) RETURNING id',
+    [id, actor.id, text, JSON.stringify(mentions || [])]
+  );
   await logHistory(id, actor.id, 'comment', text.slice(0, 80));
+  if (mentions && mentions.length) {
+    await notify(mentions.map(Number).filter((u) => u !== actor.id), id, 'mention', `${actor.name || actor.email} mentioned you`);
+  }
+  return rows[0].id;
 }
 
-export async function addAttachment(id, file, actor) {
+export async function addAttachment(id, file, actor, opts = {}) {
   await query(
-    'INSERT INTO task_attachments (task_id, filename, mime_type, file_data, uploaded_by) VALUES ($1,$2,$3,$4,$5)',
-    [id, file.originalname, file.mimetype, file.buffer, actor.id]
+    `INSERT INTO task_attachments (task_id, filename, mime_type, file_data, uploaded_by, kind, duration_sec, comment_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [id, file.originalname, file.mimetype, file.buffer, actor.id, opts.kind || 'file', opts.duration_sec || null, opts.comment_id || null]
   );
   await logHistory(id, actor.id, 'attachment', file.originalname);
 }
@@ -358,7 +453,7 @@ export async function bulkUpdate(ids, changes, actor) {
 // --- dashboard helpers -----------------------------------------------------
 export async function statusCounts(viewer) {
   const tasks = await listTasks(viewer, {});
-  const c = { open: 0, in_progress: 0, completed: 0, cancelled: 0, overdue: 0, total: tasks.length };
+  const c = { open: 0, in_progress: 0, blocked: 0, in_review: 0, done: 0, overdue: 0, total: tasks.length };
   const now = Date.now();
   for (const t of tasks) {
     c[t.status] = (c[t.status] || 0) + 1;

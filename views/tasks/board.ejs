@@ -1,6 +1,6 @@
 <%
-  const STAT = { open: 'Open', in_progress: 'In Progress', completed: 'Completed', cancelled: 'Cancelled' };
-  const PRIO = { low: 'Low', normal: 'Normal', high: 'High', urgent: 'Urgent' };
+  const STAT = { open: 'Open', in_progress: 'In Progress', blocked: 'Blocked', in_review: 'In Review', done: 'Done' };
+  const PRIO = { urgent: 'Urgent', high: 'High', medium: 'Medium', low: 'Low' };
   const fmtDue = (d) => { if (!d) return ''; const dt = new Date(d); return dt.toLocaleString('en-US', { month: 'short', day: 'numeric' }); };
   const isOverdue = (t) => t.due_at && new Date(t.due_at) < new Date() && (t.status === 'open' || t.status === 'in_progress');
 %>

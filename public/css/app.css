@@ -780,12 +780,14 @@ input.rolecard__name { width: 100%; }
 
 /* ---------- tasks: pills, table, filters ---------- */
 .pill.prio-low { background: var(--slate-wash); color: var(--ink-soft); }
-.pill.prio-normal { background: var(--blue-wash); color: var(--blue); }
+.pill.prio-normal, .pill.prio-medium { background: var(--blue-wash); color: var(--blue); }
 .pill.prio-high { background: #fbe7d6; color: #a96f1f; }
 .pill.prio-urgent { background: var(--red-wash); color: var(--red); }
-.pill.stat-open { background: var(--blue-wash); color: var(--blue); }
-.pill.stat-in_progress { background: #fff3d6; color: #9a6b00; }
-.pill.stat-completed { background: var(--green-wash); color: var(--green); }
+.pill.stat-open { background: var(--slate-wash); color: var(--ink-soft); }
+.pill.stat-in_progress { background: var(--blue-wash); color: var(--blue); }
+.pill.stat-blocked { background: var(--red-wash); color: var(--red); }
+.pill.stat-in_review { background: #fff3d6; color: #9a6b12; }
+.pill.stat-completed, .pill.stat-done { background: var(--green-wash); color: var(--green); }
 .pill.stat-cancelled { background: var(--slate-wash); color: var(--ink-muted); }
 .tag--over { background: var(--red-wash); color: var(--red); }
 .tag--done { background: var(--green-wash); color: var(--green); }
@@ -848,9 +850,11 @@ a.chip:hover { border-color: var(--line-strong); }
 .board__col { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-height: 120px; }
 .board__head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; padding: 4px 6px 10px; }
 .board__head .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-.stat-dot-open { background: var(--blue); }
-.stat-dot-in_progress { background: #9a6b00; }
-.stat-dot-completed { background: var(--green); }
+.stat-dot-open { background: #5b6472; }
+.stat-dot-in_progress { background: var(--blue); }
+.stat-dot-blocked { background: var(--red); }
+.stat-dot-in_review { background: #9a6b12; }
+.stat-dot-completed, .stat-dot-done { background: var(--green); }
 .stat-dot-cancelled { background: #9aa1ad; }
 .board__count { margin-left: auto; color: var(--ink-muted); font-weight: 500; }
 .board__list { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }

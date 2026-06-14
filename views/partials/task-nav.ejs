@@ -1,6 +1,7 @@
 <nav class="subnav" aria-label="Tasks sections">
-  <a class="subnav__tab <%= taskActive === 'list' ? 'is-active' : '' %>" href="/tasks">Tasks</a>
+  <a class="subnav__tab <%= taskActive === 'inbox' ? 'is-active' : '' %>" href="/tasks">Inbox</a>
   <a class="subnav__tab <%= taskActive === 'board' ? 'is-active' : '' %>" href="/tasks/board">Board</a>
+  <a class="subnav__tab <%= taskActive === 'table' ? 'is-active' : '' %>" href="/tasks/table">Table</a>
   <a class="subnav__tab <%= taskActive === 'snoozed' ? 'is-active' : '' %>" href="/tasks/snoozed">Snoozed</a>
   <a class="subnav__tab <%= taskActive === 'reminders' ? 'is-active' : '' %>" href="/reminders">My Reminders</a>
 </nav>
