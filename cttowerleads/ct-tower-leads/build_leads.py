@@ -92,6 +92,43 @@ def build(args):
     print(f"{len(leads)} leads -> {args.out}")
 
 
+# Actual CAMA column names in the parcel dataset (verified from the header row):
+#   owner mailing address -> mailing_address (+ _2 / city / state / zip)
+#   last sale date        -> sale_date        (e.g. "7/1/2016 0:00")
+#   last sale price       -> sale_price       (e.g. "340000"; "0" = non-arms-length)
+MAIL_FIELDS = ["mailing_address", "mailing_address_2"]
+MAIL_CITY, MAIL_STATE, MAIL_ZIP = "mailing_city", "mailing_state", "mailing_zip"
+SALE_DATE_FIELD, SALE_PRICE_FIELD = "sale_date", "sale_price"
+
+
+def fmt_mailing(raw):
+    """Compose 'STREET[, LINE2], CITY ST ZIP' from a raw CAMA row; '' if empty."""
+    raw = raw or {}
+    street = ", ".join(p.strip() for p in (raw.get(f) or "" for f in MAIL_FIELDS) if p.strip())
+    city = (raw.get(MAIL_CITY) or "").strip()
+    st = (raw.get(MAIL_STATE) or "").strip()
+    zc = (raw.get(MAIL_ZIP) or "").strip()
+    locality = " ".join(p for p in [city, st, zc] if p)
+    return ", ".join(p for p in [street, locality] if p)
+
+
+def fmt_sale_date(raw):
+    """'7/1/2016 0:00' -> '7/1/2016'; '' -> None."""
+    v = ((raw or {}).get(SALE_DATE_FIELD) or "").strip()
+    return v.split(" ", 1)[0] if v else None
+
+
+def fmt_sale_price(raw):
+    """'340000' -> '$340,000'; '' -> None (keeps 0 as $0, faithful to source)."""
+    v = ((raw or {}).get(SALE_PRICE_FIELD) or "").strip()
+    if not v:
+        return None
+    try:
+        return "${:,}".format(int(float(v)))
+    except ValueError:
+        return v
+
+
 def write_xlsx(leads, out_path, parcels_enabled):
     wb = Workbook()
     ws = wb.active
@@ -112,6 +149,7 @@ def write_xlsx(leads, out_path, parcels_enabled):
 
     cols = ["Town", "DB Address", "Type", "# Active", "Active Carriers",
             "Legacy/Uncertain", "Candidate Parcel(s)", "Candidate Owner(s)",
+            "Owner Mailing Address", "Last Sale Date", "Last Sale Price",
             "Use", "# Cands"]
     start = 4
     for j, c in enumerate(cols, 1):
@@ -126,6 +164,9 @@ def write_xlsx(leads, out_path, parcels_enabled):
             ", ".join(l["active"]), ", ".join(l["uncertain"]) or None,
             "; ".join(str(c["address"]) for c in cands) or None,
             "; ".join(str(c["owner"]) for c in cands if c.get("owner")) or None,
+            "; ".join(fmt_mailing(c.get("raw")) or "—" for c in cands) or None,
+            "; ".join(fmt_sale_date(c.get("raw")) or "—" for c in cands) or None,
+            "; ".join(fmt_sale_price(c.get("raw")) or "—" for c in cands) or None,
             "; ".join(str(c["use_desc"]) for c in cands if c.get("use_desc")) or None,
             cands[0]["n_candidates"] if cands else None,
         ]
@@ -133,15 +174,16 @@ def write_xlsx(leads, out_path, parcels_enabled):
             cell = ws.cell(row=r, column=j, value=v)
             cell.font = Font(name=F, size=9)
             cell.border = thin
-            cell.alignment = Alignment(vertical="top", wrap_text=j in (7, 8, 9))
+            cell.alignment = Alignment(vertical="top", wrap_text=j in (7, 8, 9, 12))
             if len(l["active"]) >= 3:
                 cell.fill = gold
         r += 1
-    widths = [14, 28, 16, 9, 24, 24, 34, 34, 20, 8]
+    widths = [14, 28, 16, 9, 24, 24, 34, 34, 34, 14, 14, 20, 8]
     for j, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(j)].width = w
     ws.freeze_panes = f"A{start+1}"
-    ws.auto_filter.ref = f"A{start}:J{r-1}"
+    last_col = get_column_letter(len(cols))
+    ws.auto_filter.ref = f"A{start}:{last_col}{r-1}"
     wb.save(out_path)
 
 
