@@ -1,0 +1,203 @@
+{
+  "name": "Oasis Weekly Marketing Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [1],
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "node-start-monday",
+      "name": "Start Every Monday",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-40, 300],
+      "notes": "Runs once a week, Monday at 8:00 AM. Change the day/time here if you want."
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "PASTE_YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Properties",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "node-read-oasis",
+      "name": "Read Oasis Information",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [200, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Reads the one property row from the 'Properties' tab. This sheet is the single source of truth."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Read Oasis Information').item.json['Website'] }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "node-check-pages",
+      "name": "Check Marketing Pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300],
+      "onError": "continueRegularOutput",
+      "notes": "Fetches the Oasis website text. 'Continue On Error' is ON, so a site that cannot be read will NOT stop the workflow — it just leaves the text empty and the email will say the site could not be checked."
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a careful brand-consistency checker for a property management marketing assistant. You compare a property's WEBSITE TEXT against the SOURCE OF TRUTH (from a Google Sheet). Only report problems you can actually see in the website text. Never invent problems. Return STRICT JSON only, in this exact shape:\n{\n  \"website_checked\": true,\n  \"issues\": [\"one short sentence per issue\"],\n  \"questions\": [\"Need your answer: ...\"]\n}\nLook for: old 'three months free' / '3 months free' language, wrong management company name, wrong fees (amenity fee, Wi-Fi fee), wrong lease term, different messages on different pages, and missing or outdated information. If the WEBSITE TEXT is empty or clearly could not be read, set \"website_checked\" to false and add the issue: 'Website could not be checked automatically this week — please review it by hand.' Keep every issue to one short, plain sentence. If you find no issues, return an empty issues array."
+            },
+            {
+              "role": "user",
+              "content": "=SOURCE OF TRUTH (from Google Sheet):\n{{ JSON.stringify($('Read Oasis Information').item.json) }}\n\nWEBSITE TEXT (may be empty if the site could not be read):\n{{ ($('Check Marketing Pages').item.json.data || $('Check Marketing Pages').item.json.body || '').toString().replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').slice(0, 6000) }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "id": "node-brand-check",
+      "name": "Brand Check",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [680, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_OPENAI_CREDENTIAL",
+          "name": "OpenAi account"
+        }
+      },
+      "notes": "Compares the website text to the sheet facts and lists any brand/marketing problems. Does NOT change anything."
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You write social media posts for Oasis Apartments in Bridgeport, Connecticut, managed by Zenith Group. Sound friendly, local, and human — like a real person on the leasing team, not an ad. Use the PROPERTY INFO from the Google Sheet as your only source of facts.\n\nNEVER use these phrases (or anything like them): 'luxury living at its finest', 'your dream home awaits', 'act now before it is gone'. No hype.\n\nFocus on: peaceful living, private community, modern apartments, outdoor space, convenience, pets, and simple leasing information.\n\nNEVER guess prices, apartment availability, fees, specials, or dates. If a post would need one of those facts and it is not in the PROPERTY INFO, do not make it up — instead add a clear item to the top-level \"questions\" array in the form 'Need your answer: ...'.\n\nCreate EXACTLY three posts:\n- Post 1: show the Oasis lifestyle or the outdoor property.\n- Post 2: show an apartment, floor plan, or amenity.\n- Post 3: answer a simple renter question OR promote an available apartment.\n\nReturn STRICT JSON only, in this exact shape:\n{\n  \"posts\": [\n    { \"post_number\": 1, \"idea\": \"...\", \"checklist\": [\"...\"], \"caption\": \"...\", \"on_screen_text\": \"...\", \"call_to_action\": \"...\", \"hashtags\": [\"#...\"] },\n    { \"post_number\": 2, ... },\n    { \"post_number\": 3, ... }\n  ],\n  \"top_recommendation\": \"one short sentence: the single most important thing Zenith Group should do this week\",\n  \"questions\": [\"Need your answer: ...\"]\n}\nKeep captions short (1-3 sentences). Checklist is a few short photo/video shots. 3-6 useful, specific hashtags per post (include local ones like #BridgeportCT)."
+            },
+            {
+              "role": "user",
+              "content": "=PROPERTY INFO (from Google Sheet):\n{{ JSON.stringify($('Read Oasis Information').item.json) }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "id": "node-create-posts",
+      "name": "Create Three Posts",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [680, 380],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_OPENAI_CREDENTIAL",
+          "name": "OpenAi account"
+        }
+      },
+      "notes": "Writes exactly three social posts for the week. Nothing is posted automatically — these are drafts for the email."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Weekly Email\n// Pulls results from the earlier nodes and assembles ONE short, easy-to-read email.\n// It is defensive: if the AI output is shaped differently, or a step failed,\n// it still produces a valid email instead of crashing.\n\nfunction readAI(nodeName) {\n  // Read an OpenAI node result no matter which shape n8n returned.\n  let j;\n  try { j = $(nodeName).item.json; } catch (e) { return {}; }\n  let c = j.message?.content ?? j.content ?? j.output ?? j.text ?? j;\n  if (typeof c === 'string') {\n    try { c = JSON.parse(c); } catch (e) { c = { _raw: c }; }\n  }\n  return c || {};\n}\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\n// --- Gather the sheet row (source of truth) ---\nlet sheet = {};\ntry { sheet = $('Read Oasis Information').item.json || {}; } catch (e) { sheet = {}; }\nconst propertyName = sheet['Property name'] || 'Oasis Apartments';\nconst recipient = sheet['Contact email'] || 'ai@zenithgroupmgmt.com';\n\n// --- Was the website reachable? ---\nlet websiteChecked = true;\ntry {\n  const page = $('Check Marketing Pages').item.json || {};\n  const body = (page.data || page.body || '').toString();\n  if (!body || body.length < 30) websiteChecked = false;\n} catch (e) { websiteChecked = false; }\n\n// --- Brand check results ---\nconst brand = readAI('Brand Check');\nlet issues = Array.isArray(brand.issues) ? brand.issues.slice() : [];\nif (!websiteChecked && !issues.some(i => /could not be checked/i.test(i))) {\n  issues.push('Website could not be checked automatically this week — please review it by hand.');\n}\n\n// --- Posts results ---\nconst content = readAI('Create Three Posts');\nconst posts = Array.isArray(content.posts) ? content.posts : [];\nconst topRec = content.top_recommendation || 'No specific recommendation this week — everything looks on track.';\n\n// --- Merge all open questions ---\nlet questions = []\n  .concat(Array.isArray(brand.questions) ? brand.questions : [])\n  .concat(Array.isArray(content.questions) ? content.questions : []);\nquestions = [...new Set(questions.filter(Boolean))];\n\n// ---------- Build the email ----------\nconst lines = [];\nlines.push(`<h2 style=\"font-family:Arial,sans-serif;\">${esc(propertyName)} — Weekly Marketing Plan</h2>`);\n\n// 1. Things to fix\nlines.push('<h3 style=\"font-family:Arial,sans-serif;\">1. Things Zenith Group Should Fix</h3>');\nif (issues.length) {\n  lines.push('<ul>' + issues.map(i => `<li>${esc(i)}</li>`).join('') + '</ul>');\n} else {\n  lines.push('<p>No issues found this week. 👍</p>');\n}\n\n// 2. Three posts\nlines.push(\"<h3 style=\\\"font-family:Arial,sans-serif;\\\">2. This Week's Three Social Posts</h3>\");\nif (posts.length) {\n  for (const p of posts) {\n    const checklist = Array.isArray(p.checklist) ? p.checklist : [];\n    const tags = Array.isArray(p.hashtags) ? p.hashtags.join(' ') : (p.hashtags || '');\n    lines.push('<div style=\"border:1px solid #ddd;border-radius:8px;padding:12px;margin:10px 0;font-family:Arial,sans-serif;\">');\n    lines.push(`<p><strong>Post ${esc(p.post_number || '')}</strong></p>`);\n    lines.push(`<p><strong>Idea:</strong> ${esc(p.idea)}</p>`);\n    if (checklist.length) lines.push('<p><strong>Photo/Video checklist:</strong></p><ul>' + checklist.map(c => `<li>${esc(c)}</li>`).join('') + '</ul>');\n    lines.push(`<p><strong>Caption:</strong> ${esc(p.caption)}</p>`);\n    lines.push(`<p><strong>On-screen text:</strong> ${esc(p.on_screen_text)}</p>`);\n    lines.push(`<p><strong>Call to action:</strong> ${esc(p.call_to_action)}</p>`);\n    lines.push(`<p><strong>Hashtags:</strong> ${esc(tags)}</p>`);\n    lines.push('</div>');\n  }\n} else {\n  lines.push('<p>Posts could not be generated this week. Please re-run the workflow.</p>');\n}\n\n// 3. Top recommendation\nlines.push('<h3 style=\"font-family:Arial,sans-serif;\">3. One Most Important Recommendation</h3>');\nlines.push(`<p>${esc(topRec)}</p>`);\n\n// 4. Questions\nlines.push('<h3 style=\"font-family:Arial,sans-serif;\">4. Questions That Need an Answer</h3>');\nif (questions.length) {\n  lines.push('<ul>' + questions.map(q => `<li>${esc(q)}</li>`).join('') + '</ul>');\n} else {\n  lines.push('<p>No open questions this week.</p>');\n}\n\nconst html = lines.join('\\n');\n\n// Plain-text version too, for email clients that need it.\nconst textParts = [];\ntextParts.push(`${propertyName} — Weekly Marketing Plan\\n`);\ntextParts.push('1. Things Zenith Group Should Fix');\ntextParts.push(issues.length ? issues.map(i => ' - ' + i).join('\\n') : ' No issues found this week.');\ntextParts.push(\"\\n2. This Week's Three Social Posts\");\nif (posts.length) {\n  for (const p of posts) {\n    textParts.push(` Post ${p.post_number || ''}`);\n    textParts.push(`  Idea: ${p.idea || ''}`);\n    if (Array.isArray(p.checklist)) textParts.push('  Checklist: ' + p.checklist.join('; '));\n    textParts.push(`  Caption: ${p.caption || ''}`);\n    textParts.push(`  On-screen text: ${p.on_screen_text || ''}`);\n    textParts.push(`  Call to action: ${p.call_to_action || ''}`);\n    textParts.push(`  Hashtags: ${Array.isArray(p.hashtags) ? p.hashtags.join(' ') : (p.hashtags || '')}`);\n    textParts.push('');\n  }\n} else {\n  textParts.push(' Posts could not be generated this week.');\n}\ntextParts.push('3. One Most Important Recommendation');\ntextParts.push(' ' + topRec);\ntextParts.push('\\n4. Questions That Need an Answer');\ntextParts.push(questions.length ? questions.map(q => ' - ' + q).join('\\n') : ' No open questions this week.');\nconst text = textParts.join('\\n');\n\nreturn [{ json: { subject: 'Oasis Weekly Marketing Plan', to: recipient, html, text } }];"
+      },
+      "id": "node-build-email",
+      "name": "Build Weekly Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 300],
+      "notes": "Assembles the four email sections. Very defensive: if a step failed it still builds a valid email (this is the basic error handling)."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "node-send-email",
+      "name": "Send to Zenith Group",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1180, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Sends the one weekly email to Zenith Group for review. Nothing is posted to social media — approval is by a human. If you prefer plain SMTP, swap this for the 'Send Email' node and use $json.text/$json.html."
+    }
+  ],
+  "connections": {
+    "Start Every Monday": {
+      "main": [[{ "node": "Read Oasis Information", "type": "main", "index": 0 }]]
+    },
+    "Read Oasis Information": {
+      "main": [[{ "node": "Check Marketing Pages", "type": "main", "index": 0 }]]
+    },
+    "Check Marketing Pages": {
+      "main": [[{ "node": "Brand Check", "type": "main", "index": 0 }]]
+    },
+    "Brand Check": {
+      "main": [[{ "node": "Create Three Posts", "type": "main", "index": 0 }]]
+    },
+    "Create Three Posts": {
+      "main": [[{ "node": "Build Weekly Email", "type": "main", "index": 0 }]]
+    },
+    "Build Weekly Email": {
+      "main": [[{ "node": "Send to Zenith Group", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateabsence": false
+  }
+}
