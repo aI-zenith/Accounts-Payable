@@ -47,8 +47,8 @@ you keep information, so it's the only place you ever have to update.
    | Wi-Fi fee | $75 |
    | Brand message | Modern apartments in a peaceful private community |
    | Tagline | Find Your Space. Find Your Peace. |
-   | Contact phone | (fill this in) |
-   | Contact email | ai@zenithgroupmgmt.com |
+   | Contact phone | 203-800-9815 |
+   | Contact email | Zalmy@zenithgroupmgmt.com |
    | Approved notes | social links, listing notes, "don't guess" reminder |
 
 > **Important:** Keep the column names **exactly** as they are. The workflow looks
@@ -98,7 +98,7 @@ workflow can use this account." Full details are in **`CREDENTIALS.md`**.
 2. Under **Credential**, click **Create New**, choose **Gmail OAuth2**, and sign in
    with the Google account that should send the email.
 3. The email goes **to the address in the sheet's "Contact email" column**
-   (currently `ai@zenithgroupmgmt.com`). To change who receives it, just change that
+   (currently `Zalmy@zenithgroupmgmt.com`). To change who receives it, just change that
    cell in the sheet — no need to edit the workflow.
 
 > Prefer regular email instead of Gmail? See the note at the bottom of

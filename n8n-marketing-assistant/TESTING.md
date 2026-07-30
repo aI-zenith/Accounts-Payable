@@ -43,11 +43,12 @@ This proves the basic error handling works.
 
 ## Test 4 — Check the "no guessing" rule
 
-1. Make sure the **Contact phone** cell in the sheet still says `Need your answer: ...`
-   (or is blank).
+1. Temporarily **clear** a fact cell that a post might need — for example, empty the
+   **Current special** cell (put it back afterward).
 2. Run the workflow.
 3. The email's **Questions That Need an Answer** section should include a
-   *"Need your answer: ..."* line instead of a made-up phone number.
+   *"Need your answer: ..."* line instead of a made-up value. It should never invent a
+   special, price, fee, or date.
 
 ## What to check in the writing
 
